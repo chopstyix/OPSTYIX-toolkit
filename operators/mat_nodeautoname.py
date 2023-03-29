@@ -37,8 +37,8 @@ class OPSTYIX_OT_MAT_NodeAutoname(Operator):
       transmission_list = ['transmission','translucency']
       metallic_list = ['metallic','metalness'] # Refrain from using 'metal', it causes some funkiness
       glossy_list = ['glossy','glossiness']
-      specular_list = ['specular','spec']
-      roughness_list = ['roughness','rough']
+      specular_list = ['specular']
+      roughness_list = ['roughness']
       opacity_list = ['opacity','alpha']
       bump_list = ['bump']
       normal_list = ['normal','nmap']
@@ -62,6 +62,7 @@ class OPSTYIX_OT_MAT_NodeAutoname(Operator):
         #TODO: Support other material nodes such as Diffuse, Metallic, Standard Materials along with Layers
         # Search for Principled BSDF and convert to Universal Material, Node Wrangler Required
         for idx,x in enumerate(n):
+          print(f"Detected {n[idx].bl_label}.")
           if n[idx].bl_label == 'Universal material':
             print("Detected Universal Material")
             universal_mat = n[idx]            
@@ -76,11 +77,11 @@ class OPSTYIX_OT_MAT_NodeAutoname(Operator):
               node_tree.links.remove(n[idx].outputs[0].links[0])
             except:
               print("Node has no connections!")
-          elif n[idx].bl_label == 'RGB image':
+          elif n[idx].bl_label == 'RGB image' or n[idx].bl_label == 'Grayscale image':
             print(f"Detected {n[idx].bl_label}.")
           else:              
             print("Deleting unused nodes")
-            node_tree.nodes.remove(n[idx])
+            #node_tree.nodes.remove(n[idx])
             del n[idx]
 
         if 'universal_mat' in locals():
@@ -337,6 +338,8 @@ class OPSTYIX_OT_MAT_NodeAutoname(Operator):
 
         #* Create Material Output Node
         if 'universal_mat' in locals():
+          if (node_tree.nodes['Material Output'].target == 'ALL'):
+            node_tree.nodes.remove(node_tree.nodes['Material Output'])
           output_octane = node_tree.nodes.new('ShaderNodeOutputMaterial')
           output_octane.target = 'octane'
           output_octane.is_active_output = True
