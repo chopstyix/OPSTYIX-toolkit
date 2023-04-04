@@ -67,13 +67,50 @@ class OPSTYIX_OT_EMISSIVEVP_MaterialSetup(Operator):
             v.targets[0].data_path = "[\"emission\"]" # Set data path to current object 'x' custom property 'emission'
         return {'FINISHED'}
 
+
+class OPSTYIX_OT_EMISSIVEVP_EmissiveSetup(Operator):
+    bl_idname = "opstyix.emissivevp_emissivesetup"
+    bl_label = "Creates a driver to help animate lights"
+    def execute(self, context):
+
+        selected_obj = bpy.context.active_object
+        active_material = selected_obj.active_material
+
+
+        d = bpy.data.objects[selected_obj.name].driver_add("color",0).driver
+        d.expression = "default_value"
+        v = d.variables.new()
+        v.name = "default_value"      
+        v.targets[0].id_type = 'MATERIAL'
+        v.targets[0].id = active_material
+        v.targets[0].data_path = "node_tree.nodes[\"Float component picker\"].inputs[0].default_value[0]"
+
+        d = bpy.data.objects[selected_obj.name].driver_add("color",1).driver
+        d.expression = "default_value"        
+        v = d.variables.new()
+        v.name = "default_value"      
+        v.targets[0].id_type = 'MATERIAL'
+        v.targets[0].id = active_material
+        v.targets[0].data_path = "node_tree.nodes[\"Float component picker\"].inputs[0].default_value[0]"
+
+        d = bpy.data.objects[selected_obj.name].driver_add("color",2).driver
+        d.expression = "default_value"
+        v = d.variables.new()
+        v.name = "default_value"      
+        v.targets[0].id_type = 'MATERIAL'
+        v.targets[0].id = active_material
+        v.targets[0].data_path = "node_tree.nodes[\"Float component picker\"].inputs[0].default_value[0]"        
+        return {'FINISHED'}
+
 def register_vp_emissive():
     bpy.utils.register_class(OPSTYIX_OT_EMISSIVEVP_ObjectSetup)
     bpy.utils.register_class(OPSTYIX_OT_EMISSIVEVP_MaterialSetup)
+    bpy.utils.register_class(OPSTYIX_OT_EMISSIVEVP_EmissiveSetup)
 
 def unregister_vp_emissive():
     bpy.utils.unregister_class(OPSTYIX_OT_EMISSIVEVP_ObjectSetup)
     bpy.utils.unregister_class(OPSTYIX_OT_EMISSIVEVP_MaterialSetup)
+    bpy.utils.unregister_class(OPSTYIX_OT_EMISSIVEVP_EmissiveSetup)
 
 #* RUN ON LOAD
 print("vp_emissive.py loaded")
