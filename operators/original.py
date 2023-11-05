@@ -99,6 +99,12 @@ class MyProperties(PropertyGroup):
         default=False,
     )
 
+    tool_enable_auto_bookmarks: BoolProperty(
+        name="Enable Auto-Bookmarks",
+        description="Automatically create measure/bar bookmarks when creating markers",
+        default=False,
+    )
+
 
 # * OPERATORS (Executable Functions)
 class OPSTYIX_OT_actions(Operator):
@@ -147,7 +153,7 @@ class OPSTYIX_OT_actions(Operator):
                 scene.custom.remove(idx)
                 self.report({"INFO"}, info)
                 # print("Active index ",scene.active_index)
-                print("Selected index ", scene.selected_index)
+                # print("Selected index ", scene.selected_index)
 
         if self.action == "ADD":
             if scene.OPSTYIX_user_input.setting_override_frames == False:
@@ -159,13 +165,13 @@ class OPSTYIX_OT_actions(Operator):
                     frame_start = scene.frame_preview_start
                     frame_end = scene.frame_preview_end
                 obj_id = len(scene.custom)  # Assigns the object and ID
-                selected_index = len(scene.custom) - 1  # Assigns an index ID
+                selected_index = len(scene.custom) # Assigns an index ID
             else:
                 if userinput.my_frame_start <= userinput.my_frame_end:
                     frame_start = userinput.my_frame_start
                     frame_end = userinput.my_frame_end
                     obj_id = len(scene.custom)  # Assign obj id
-                    selected_index = len(scene.custom) - 1  # Assign index
+                    selected_index = len(scene.custom)  # Assign index
 
                     # Reset my_frame_note
                     # userinput.my_frame_note = "Bookmark Name"
@@ -217,12 +223,16 @@ class OPSTYIX_OT_DrawMarkers(Operator):
 
         # Begin Main Code
         beat_total = input_measure * 4
+        bar_iter = 0
+        frame_input = 1
         beat_input = 1
         scene.timeline_markers.new("[1]", frame=1)
         print("Placing beat marker on frame 1")
 
         while beat_input <= beat_total:
-            print("New Measure")
+            # print("New Measure")
+            bar_iter += 1
+            bar_start = frame_input
             frame_input = int(beat_input * fpb)
             scene.timeline_markers.new("[2]", frame=frame_input)
             beat_input += 1
@@ -233,8 +243,24 @@ class OPSTYIX_OT_DrawMarkers(Operator):
             scene.timeline_markers.new("[4]", frame=frame_input)
             beat_input += 1
             frame_input = int(beat_input * fpb)
+            bar_end = frame_input-1
             scene.timeline_markers.new("[1]", frame=frame_input)
             beat_input += 1
+            
+            if scene.OPSTYIX_user_input.tool_enable_auto_bookmarks == True:
+                item = scene.custom.add()
+                item.frame_note = "Bar " + str(bar_iter)
+                item.name = "Bar " + str(bar_iter)
+                item.obj_id = len(scene.custom)
+                # Do this for the very first frame only
+                item.frame_start = bar_start
+                # if beat_input > 1:
+                #     item.frame_start = bar_start
+                # else:
+                #     item.frame_start = 1
+                item.frame_end = bar_end
+                #scene.selected_index = len(scene.custom) - 1
+
 
         area = bpy.context.area
         old_type = area.type
@@ -252,7 +278,7 @@ class OPSTYIX_OT_DrawMarkers(Operator):
 
         return {"FINISHED"}
 
-
+# TODO: Add the ability to lock certain bookmarks, which are protected from being deleted by this operator.
 class OPSTYIX_OT_DeleteMarkers(Operator):
     bl_idname = "opstyix.deletemarkers"
     bl_label = "Delete Markers"
@@ -357,7 +383,9 @@ class OPSTYIX_PT_toolkit(Panel):
         col.prop(my_tool, "my_frame_padding", text="Frame Offset")
 
         row = layout.row(align=True)
-        row.prop(my_tool, "tool_modifyEndFrame", text="Update End Frame")
+        col = row.column(align=True)
+        col.prop(my_tool, "tool_modifyEndFrame", text="Update End Frame")
+        col.prop(my_tool, "tool_enable_auto_bookmarks", text="Auto Bookmark")
 
         row = layout.row(align=True)
         row.operator("opstyix.drawmarkers", text="Create Markers")
