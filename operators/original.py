@@ -515,5 +515,4 @@ def unregister_original():
 #     register()
 
 # *  RUN ON LOAD
-# print("OPSTYIX_toolkit loaded!")
 print("original.py loaded")
