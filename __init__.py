@@ -45,7 +45,7 @@ def register():
     register_vp_emissive()
     #//register_overlay()
 
-def unregister():
+def unregister():      
     unregister_mat_nodeautoname()
     unregister_original()
     unregister_scatter()

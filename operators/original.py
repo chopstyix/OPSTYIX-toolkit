@@ -1,5 +1,7 @@
 # * FILE IMPORT
+import os
 import bpy
+import bpy.utils.previews
 
 from bpy.props import (
     StringProperty,
@@ -368,10 +370,15 @@ class OPSTYIX_PT_toolkit(Panel):
     bl_context = "scene"
     bl_label = "OPSTYIX Toolkit"
     bl_category = "OPSTYIX"
+    
+    def draw_header(self, context):
+        self.layout.label(icon_value=custom_icons["opstyix_icon"].icon_id)
 
     def draw(self, context):
         scene = context.scene
         layout = self.layout
+        global custom_icons
+        # layout.label(text="test", icon_value=custom_icons["opstyix_icon"].icon_id)
         layout.use_property_split = True
         layout.use_property_decorate = False
         my_tool = scene.OPSTYIX_user_input
@@ -485,6 +492,8 @@ class OPSTYIX_objectCollection(PropertyGroup):
         description="An string property",
         default="Label",
     )
+# * Global Variable
+custom_icons = None
 
 # * REGISTER
 # * Add all classes below, it will automatically register and unregister
@@ -492,6 +501,14 @@ def register_original():
     # from bpy.utils import register_class
     # for cls in classes:
     #     register_class(cls)
+    global custom_icons
+    custom_icons = bpy.utils.previews.new()
+    addon_path = os.path.dirname(__file__)
+    icons_dir = os.path.join(addon_path, '..', "icons")
+
+    custom_icons.load("opstyix_icon", os.path.join(icons_dir, "opstyix_icon.png"), 'IMAGE')
+
+
     bpy.utils.register_class(MyProperties)
     bpy.utils.register_class(OPSTYIX_PT_toolkit)
     bpy.utils.register_class(OPSTYIX_PT_animationBookmarks)
@@ -520,6 +537,8 @@ def unregister_original():
     # from bpy.utils import unregister_class
     # for cls in classes:
     #     unregister_class(cls)
+    global custom_icons
+    bpy.utils.previews.remove(custom_icons)
     bpy.utils.unregister_class(MyProperties)
     bpy.utils.unregister_class(OPSTYIX_PT_toolkit)
     bpy.utils.unregister_class(OPSTYIX_PT_animationBookmarks)
