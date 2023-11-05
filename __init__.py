@@ -36,8 +36,6 @@ class OpstyixPrefs(AddonPreferences):
         name = 'Base Color',
         default = 'albedo color colour diffuse basemap',
         description = 'Naming Components for Base Color maps')
-    
-    
 
 def register():
     register_mat_nodeautoname()
