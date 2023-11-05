@@ -12,8 +12,14 @@ from bpy.props import (
     CollectionProperty,
 )
 
-from bpy.types import Operator, Panel, Menu, AddonPreferences, PropertyGroup, UIList
-
+from bpy.types import (
+    Operator,
+    Panel,
+    Menu,
+    AddonPreferences,
+    PropertyGroup,
+    UIList,
+)
 
 # * STORE PROPERTIES (Self Descriptive)
 class MyProperties(PropertyGroup):
@@ -28,14 +34,6 @@ class MyProperties(PropertyGroup):
         min=4,
         max=9999,
     )
-
-    # frame_start : IntProperty(
-    #     name = "Measure Value",
-    #     description="A integer property",
-    #     default = 128,
-    #     min = 4,
-    #     max = 9999
-    #     )
 
     tool_modifyEndFrame: BoolProperty(
         name="Modify End Frame",
@@ -189,156 +187,6 @@ class OPSTYIX_OT_actions(Operator):
             userinput.my_frame_note = ""
 
         return {"FINISHED"}
-
-
-# class CUSTOM_OT_printItems(Operator):
-#     """Print all items and their properties to the console"""
-#     bl_idname = "custom.print_items"
-#     bl_label = "Print Items to Console"
-#     bl_description = "Print all items and their properties to the console"
-#     bl_options = {'REGISTER', 'UNDO'}
-
-#     reverse_order: BoolProperty(
-#         default=False,
-#         name="Reverse Order")
-
-#     @classmethod
-#     def poll(cls, context):
-#         return bool(context.scene.custom)
-
-#     def execute(self, context):
-#         scene = context.scene
-#         if self.reverse_order:
-#             for i in range(scene.selected_index, -1, -1):
-#                 item = scene.custom[i]
-#                 print ("Name:", item.name,"-",item.frame_start,"to",item.frame_end)
-#         else:
-#             for item in scene.custom:
-#                 print ("Name:", item.name,"-",item.frame_start,"to",item.frame_end)
-#                 print("test",item.id)
-#         return{'FINISHED'}
-
-# class CUSTOM_OT_clearList(Operator):
-#     """Clear all items of the list"""
-#     bl_idname = "custom.clear_list"
-#     bl_label = "Clear List"
-#     bl_description = "Clear all items of the list"
-#     bl_options = {'INTERNAL'}
-
-#     @classmethod
-#     def poll(cls, context):
-#         return bool(context.scene.custom)
-
-#     def invoke(self, context, event):
-#         return context.window_manager.invoke_confirm(self, event)
-
-#     def execute(self, context):
-#         if bool(context.scene.custom):
-#             context.scene.custom.clear()
-#             self.report({'INFO'}, "All items removed")
-#         else:
-#             self.report({'INFO'}, "Nothing to remove")
-#         return{'FINISHED'}
-
-# class CUSTOM_OT_removeDuplicates(Operator):
-#     """Remove all duplicates"""
-#     bl_idname = "custom.remove_duplicates"
-#     bl_label = "Remove Duplicates"
-#     bl_description = "Remove all duplicates"
-#     bl_options = {'INTERNAL'}
-
-#     def find_duplicates(self, context):
-#         """find all duplicates by name"""
-#         name_lookup = {}
-#         for c, i in enumerate(context.scene.custom):
-#             name_lookup.setdefault(i.name, []).append(c)
-#         duplicates = set()
-#         for name, indices in name_lookup.items():
-#             for i in indices[1:]:
-#                 duplicates.add(i)
-#         return sorted(list(duplicates))
-
-#     @classmethod
-#     def poll(cls, context):
-#         return bool(context.scene.custom)
-
-#     def execute(self, context):
-#         scene = context.scene
-#         removed_items = []
-#         # Reverse the list before removing the items
-#         for i in self.find_duplicates(context)[::-1]:
-#             scene.custom.remove(i)
-#             removed_items.append(i)
-#         if removed_items:
-#             scene.selected_index = len(scene.custom)-1
-#             info = ', '.join(map(str, removed_items))
-#             self.report({'INFO'}, "Removed indices: %s" % (info))
-#         else:
-#             self.report({'INFO'}, "No duplicates")
-#         return{'FINISHED'}
-
-#     def invoke(self, context, event):
-#         return context.window_manager.invoke_confirm(self, event)
-
-# class CUSTOM_OT_selectItems(Operator):
-#     """Select Items in the Viewport"""
-#     bl_idname = "custom.select_items"
-#     bl_label = "Select Item(s) in Viewport"
-#     bl_description = "Select Items in the Viewport"
-#     bl_options = {'REGISTER', 'UNDO'}
-
-#     select_all: BoolProperty(
-#         default=False,
-#         name="Select all Items of List",
-#         options={'SKIP_SAVE'})
-
-#     @classmethod
-#     def poll(cls, context):
-#         return bool(context.scene.custom)
-
-#     def execute(self, context):
-#         scene = context.scene
-#         idx = scene.selected_index
-
-#         try:
-#             item = scene.custom[idx]
-#         except IndexError:
-#             self.report({'INFO'}, "Nothing selected in the list")
-#             return{'CANCELLED'}
-
-#         obj_error = False
-#         bpy.ops.object.select_all(action='DESELECT')
-#         if not self.select_all:
-#             obj = scene.objects.get(scene.custom[idx].name, None)
-#             if not obj:
-#                 obj_error = True
-#             else:
-#                 obj.select_set(True)
-#                 info = '"%s" selected in Viewport' % (obj.name)
-#         else:
-#             selected_items = []
-#             unique_objs = set([i.name for i in scene.custom])
-#             for i in unique_objs:
-#                 obj = scene.objects.get(i, None)
-#                 if obj:
-#                     obj.select_set(True)
-#                     selected_items.append(obj.name)
-
-#             if not selected_items:
-#                 obj_error = True
-#             else:
-#                 missing_items = unique_objs.difference(selected_items)
-#                 if not missing_items:
-#                     info = '"%s" selected in Viewport' \
-#                         % (', '.join(map(str, selected_items)))
-#                 else:
-#                     info = 'Missing items: "%s"' \
-#                         % (', '.join(map(str, missing_items)))
-#         if obj_error:
-#             info = "Nothing to select, object removed from scene"
-#         self.report({'INFO'}, info)
-#         return{'FINISHED'}
-
 
 class OPSTYIX_OT_DrawMarkers(Operator):
     #! Operator only works on main scene frame ranges, if user has preview range enabled no visible changes are made which can result in confusion.
@@ -574,32 +422,6 @@ class OPSTYIX_PT_animationBookmarks(Panel):
         col.operator("opstyix.setframerange", text="", icon="DRIVER_DISTANCE")
         col.prop(scene, "use_preview_range", text="", toggle=True)
 
-
-# class OPSTYIX_PT_settings(Panel):
-#     bl_label = "Settings"
-#     bl_space_type = "PROPERTIES"
-#     bl_region_type = "WINDOW"
-#     bl_context = "scene"
-#     bl_category = "OPSTYIX"
-#     bl_parent_id = "OPSTYIX_PT_toolkit"
-
-#     def draw(self, context):
-#         layout = self.layout
-#         scene = context.scene
-#         mytool = scene.OPSTYIX_user_input
-
-#         row = layout.row()
-#         column = layout.column()
-#         # Should probably defunct this, and leave this enabled by default.
-#         # row.prop(mytool, "tool_modifyEndFrame", text= "Modify End Frame")
-
-#         # row = column.row()
-#         # row.prop(mytool, "setting_useStartEndFrame", text = "Use Start/End Frames")
-
-#         # row = column.row()
-#         # row.prop(mytool, "my_frame_padding", text = "Frame Padding")
-
-
 # * COLLECTIONS
 # This contains the shot list bookmark data properties
 class OPSTYIX_objectCollection(PropertyGroup):
@@ -635,8 +457,6 @@ class OPSTYIX_objectCollection(PropertyGroup):
         description="An string property",
         default="Label",
     )
-    # active: BoolProperty()
-
 
 # * REGISTER
 # * Add all classes below, it will automatically register and unregister
@@ -655,10 +475,6 @@ def register_original():
     bpy.utils.register_class(OPSTYIX_objectCollection)
     bpy.utils.register_class(OPSTYIX_OT_infoTest)
     bpy.utils.register_class(OPSTYIX_OT_actions)
-    # bpy.utils.register_class(CUSTOM_OT_printItems)
-    # bpy.utils.register_class(CUSTOM_OT_clearList)
-    # bpy.utils.register_class(CUSTOM_OT_removeDuplicates)
-    # bpy.utils.register_class(CUSTOM_OT_selectItems)
 
     # Passes "MyProperties" into something callable a.k.a. "OPSTYIX_user_input"
     bpy.types.Scene.OPSTYIX_user_input = PointerProperty(type=MyProperties)
