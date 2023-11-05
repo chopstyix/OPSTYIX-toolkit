@@ -35,6 +35,14 @@ class MyProperties (PropertyGroup):
         max = 9999
         )
         
+    # frame_start : IntProperty(
+    #     name = "Measure Value",
+    #     description="A integer property",
+    #     default = 128,
+    #     min = 4,
+    #     max = 9999
+    #     )
+    
     tool_modifyEndFrame : BoolProperty(
         name = "Modify End Frame",
         description="Changes the end frame of your animation when creating beat markers",
@@ -171,7 +179,7 @@ class OPSTYIX_OT_actions(Operator):
                 userinput.my_frame_note = "Bookmark Name"
 
             else:
-                if userinput.my_frame_start < userinput.my_frame_end:
+                if userinput.my_frame_start <= userinput.my_frame_end:
                     item.frame_start = userinput.my_frame_start
                     item.frame_end = userinput.my_frame_end
 
@@ -463,26 +471,10 @@ class OPSTYIX_OT_infoTest(Operator):
 # This controls the output text inside the UIList
 class OPSTYIX_UL_items(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        #scene = bpy.context.scene
-        #mytool = scene.OPSTYIX_user_input
-        split = layout.split(factor=.5,align=True)
-        #checkbox = "CHECKBOX_HLT" if item.active else "CHECKBOX_DEHLT"
-        #split.label(text="Index: %d" % (index))
-        #custom_icon = "OUTLINER_OB_%s" % item.obj_type
-        #split.prop(item, "name", text="", emboss=False, translate=False, icon=custom_icon)
-        #split.label(text=item.name, icon=custom_icon) # avoids renaming the item by accident
-        #split.label(text=item.name)
+        split = layout.split(factor = 0, align = True)
         split.prop(item, "name", text = '', emboss= False, translate = False)
-        #split = layout.split(factor=.2,align=False)
         split.prop(item, "frame_start", text = '', emboss = False, translate = False)      
         split.prop(item, "frame_end", text = '', emboss = False, translate = False)
-        #split.label(text=str(item.frame_start)+" -> "+str(item.frame_end))
-        #split = layout.split(factor=.2,align=True)   
-        #split.prop(item, "active", text='', emboss=False, icon=checkbox)
-        #split.prop(mytool, 'tool_enablePreviewRange', text = '', emboss=False)
-        #split.prop(modifier, 'show_viewport', text='', emboss=False) 
-        #split.label(text="-")
-        #split.label(text=str(item.frame_end))
 
     def invoke(self, context, event):
         pass   
@@ -539,7 +531,7 @@ class OPSTYIX_PT_animationBookmarks(Panel):
         mytool = scene.OPSTYIX_user_input
         
         row = layout.row(align = True)
-        row.prop(mytool,"my_frame_note", text="Label")
+        row.prop(mytool,"my_frame_note", text="Bookmark Label")
 
         row = layout.row(align = True)
         col = row.column(align = True)             
@@ -555,18 +547,10 @@ class OPSTYIX_PT_animationBookmarks(Panel):
 
         row = layout.row()
         row.prop(mytool, "setting_override_frames", text = "Override Frames")
-
-        split = layout.split(factor=0.5,align= True)
-        #split.alignment = 'CENTER'
-        split.label(text = 'Name', translate = False)
-        split.label(text = 'Start', translate = False)
-        split.label(text = 'End', translate = False)
         
         # row = layout.row()        
         # col = row.column(align=True)
         # split.label(text = '', translate = False)
-        # split.prop(item, "frame_start", text = 'Start:', emboss = False, translate = False)      
-        # split.prop(item, "frame_end", text = 'End', emboss = False, translate = False)
 
         # rows = 2
         row = layout.row()
@@ -608,15 +592,41 @@ class OPSTYIX_PT_animationBookmarks(Panel):
 #         # row.prop(mytool, "my_frame_padding", text = "Frame Padding")
         
 #* COLLECTIONS
-# This contains the shot list bookmark data
+# This contains the shot list bookmark data properties
 class OPSTYIX_objectCollection(PropertyGroup):
     #name: StringProperty() -> Instantiated by default
     #obj_type: StringProperty()
-    id: IntProperty()
-    frame_start: IntProperty()
-    frame_end: IntProperty()
-    frame_note: StringProperty()
-    active: BoolProperty()
+    id: IntProperty(
+        name = "Index Value",
+        description = "An integer property",
+        default = 0,
+        min = 0,
+        max = 99999,
+    )
+
+    frame_start: IntProperty(
+        name = "Start Frame Value",
+        description = "An integer property",
+        default = 1,
+        min = 0,
+        max = 99999,
+    )
+
+    frame_end: IntProperty(
+        name = "End Frame Value",
+        description = "An integer property",
+        default = 1,
+        min = 0,
+        max = 99999,
+    )
+
+    #TODO: Rename to bookmark_label
+    frame_note: StringProperty(
+        name = "Bookmark Label",
+        description = "An string property",
+        default = "Label",
+    )
+    # active: BoolProperty()
 
 #* REGISTER
 #* Add all classes below, it will automatically register and unregister
@@ -644,8 +654,9 @@ def register_original():
     bpy.types.Scene.OPSTYIX_user_input = PointerProperty(type=MyProperties)
     bpy.types.Scene.OPSTYIX_active_collection = bpy.props.PointerProperty(type=bpy.types.Collection)
 
-    # Passes 
-    bpy.types.Scene.custom = CollectionProperty(type=OPSTYIX_objectCollection)
+    # Custom Properties
+    #TODO: Cleanup, move all custom properties to OPSTYIX.
+    bpy.types.Scene.custom = CollectionProperty(type = OPSTYIX_objectCollection)
     bpy.types.Scene.selected_index = IntProperty()
     
 def unregister_original():
