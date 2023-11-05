@@ -41,6 +41,12 @@ class MyProperties (PropertyGroup):
         default = True
         )
     
+    setting_override_frames : BoolProperty(
+        name = "Override Frames",
+        description= "Uses a user-specified range of frames from the User",
+        default = True
+        )
+        
     measure_Start : IntProperty(
         name = "Start of Beat Marker Placements",
         description="A integer property",
@@ -137,28 +143,51 @@ class OPSTYIX_OT_actions(Operator):
 
             elif self.action == 'REMOVE':
                 info = 'Item "%s" removed from list' % (scene.custom[idx].name)
-                scene.selected_index -= 1
+                #scene.selected_index -= None
                 scene.custom.remove(idx)
                 self.report({'INFO'}, info)
+                #print("Active index ",scene.active_index)
+                print("Selected index ",scene.selected_index)
 
         if self.action == 'ADD':
-            if userinput.my_frame_start < userinput.my_frame_end:
-                item = scene.custom.add() # Assigns the add function to "item"
-                item.name = userinput.my_frame_note
-                item.frame_note = item.name
-                item.frame_start = userinput.my_frame_start
-                item.frame_end = userinput.my_frame_end
+            item = scene.custom.add() # Assigns the add function to "item"
+            item.name = userinput.my_frame_note
+            item.frame_note = item.name  
+
+            if scene.OPSTYIX_user_input.setting_override_frames == False:
+                # Check if user has 'Preview Range' disabled; if enabled, reference Preview Range Start and End frames
+                if scene.use_preview_range == False:
+                    item.frame_start = scene.frame_start
+                    item.frame_end = scene.frame_end
+                else:
+                    item.frame_start = scene.frame_preview_start
+                    item.frame_end = scene.frame_preview_end
+                
                 item.active = False
                 item.obj_id = len(scene.custom) # Assigns the object and ID 
-                scene.selected_index = len(scene.custom)-1 # Assigns an index ID
-
-                info = 'Bookmark successful' # % (item.name,item.frame_start,item.frame_end)
-                self.report({'INFO'}, info)
-
-                userinput.my_frame_note = ""
+                scene.selected_index = len(scene.custom)-1 # Assigns an index ID                
+                
+                # Reset my_frame_note
+                userinput.my_frame_note = "Bookmark Name"
 
             else:
-                self.report({'INFO'}, "Starting frame cannot be after end frame!")
+                if userinput.my_frame_start < userinput.my_frame_end:
+                    item.frame_start = userinput.my_frame_start
+                    item.frame_end = userinput.my_frame_end
+
+                    item.active = False
+                    item.obj_id = len(scene.custom) # Assigns the object and ID 
+                    scene.selected_index = len(scene.custom)-1 # Assigns an index ID                
+                    
+                    # Reset my_frame_note                
+                    userinput.my_frame_note = "Bookmark Name"
+                
+                else:
+                    self.report({'INFO'}, "Starting frame cannot be after end frame!")
+
+                # info = 'Bookmark successful' # % (item.name,item.frame_start,item.frame_end)
+                # self.report({'INFO'}, info)
+   
         return {"FINISHED"}
 
 # class CUSTOM_OT_printItems(Operator):
@@ -310,6 +339,9 @@ class OPSTYIX_OT_actions(Operator):
 #         return{'FINISHED'}
     
 class OPSTYIX_OT_DrawMarkers (Operator):
+    #! Operator only works on main scene frame ranges, if user has preview range enabled no visible changes are made which can result in confusion.
+    #TODO: Check for preview frame range and disable if necessary.
+
     bl_idname = "opstyix.drawmarkers"
     bl_label = "Create Markers"
     bl_description = "Create markers based off user input"
@@ -365,6 +397,7 @@ class OPSTYIX_OT_DrawMarkers (Operator):
         if input_modifyEndFrame == True:
             new_frame_end = int(fpb * input_measure * 4 - 1)
             print("End frame will be: ",new_frame_end)
+            bpy.context.scene.frame_start = 1
             bpy.context.scene.frame_end = new_frame_end
         
         return {'FINISHED'}
@@ -386,6 +419,11 @@ class OPSTYIX_OT_setFrameRange(Operator):
     bl_label = "Set Frame Range"
     bl_description = "Set Frame Range"
 
+    # ? 2023-11-05
+    # ? Revisting this block of code, seems like 'custom' can be renamed to something else
+    # ? perhaps it should be renamed to animationBookmarks?
+    # TODO: Renamed 'custom' to 'animationBookmarks'. Name not final.
+
     # If nothing is found in the UIList, the button is disabled
     @classmethod
     def poll(cls, context):
@@ -394,58 +432,22 @@ class OPSTYIX_OT_setFrameRange(Operator):
     def execute(self,context):
         scene = context.scene
         selectedIndex = scene.selected_index
-        item = scene.custom[selectedIndex]
-        length = len(scene.custom)
-        lowestFrameStart = 1
-        highestFrameEnd = 1
-        activeListFrameStart = []
-        activeListFrameEnd = []
+        print("Selected index from UIList:",selectedIndex)
+
         framepadding = bpy.data.scenes["Scene"].OPSTYIX_user_input.my_frame_padding
-
-        #For loop, for every checkmark check frame start, and apply the LOWEST and HIGHEST frame start value
-        for i in range(len(scene.custom)):
-            if scene.custom[i].active:
-                activeListFrameEnd.append(scene.custom[i].frame_end)
-                activeListFrameStart.append(scene.custom[i].frame_start)
-                print("Found active!")
-            else:
-                print("No active in this interation of index:",i)
-
-        if len(activeListFrameStart) == 0:
-            info = "Unable to continue, please select active timeline markers!"
-            print(info)
-            self.report({'INFO'}, info)
-            return {('FINISHED')}
-        print("Finding active loops completed!")
-        print("Sorting activeList's...")
-        activeListFrameEnd.sort()
-        activeListFrameStart.sort()
-        print("Smallest active start frame found is:", activeListFrameStart[0])
-        lowestFrameStart = activeListFrameStart[0]
-        print("Highest active end frame found is:", activeListFrameEnd[len(activeListFrameEnd)-1])
-        highestFrameEnd = activeListFrameEnd[len(activeListFrameEnd)-1]
-
-        info = 'Set Preview Range from frames %d to %d' % (lowestFrameStart,highestFrameEnd)
-        self.report({'INFO'}, info)
+        set_start_frame = scene.custom[selectedIndex].frame_start
+        set_end_frame = scene.custom[selectedIndex].frame_end
+        
         if scene.use_preview_range == True:
-            scene.frame_preview_start = lowestFrameStart - framepadding
-            scene.frame_preview_end = highestFrameEnd + framepadding
+            info = 'Set Preview Range from frames %d to %d' % (set_start_frame, set_end_frame)
+            scene.frame_preview_start = set_start_frame - framepadding
+            scene.frame_preview_end = set_end_frame + framepadding
         else:
-            scene.frame_start = lowestFrameStart - framepadding
-            scene.frame_end = highestFrameEnd + framepadding
-        # scene.use_preview_range = True
-        # scene.frame_preview_start = lowestFrameStart
-        # scene.frame_preview_end = highestFrameEnd
-        #Set Preview Timeline Range 
-        # scene.use_preview_range = True
-        # scene.frame_preview_start = item.frame_start
-        # scene.frame_preview_end = item.frame_end
-
-        #info = 'Set Preview Range for %s from frames %d to %d' % (item.frame_note,item.frame_start,item.frame_end)
-        #self.report({'INFO'}, info)
-        # For selected index's
-        # print("Selected Index: ",selectedIndex)
-        # print(item.frame_start,item.frame_end,item.frame_note)
+            info = 'Set Range from frames %d to %d' % (set_start_frame, set_end_frame)            
+            scene.frame_start = set_start_frame - framepadding
+            scene.frame_end = set_end_frame + framepadding
+        
+        self.report({'INFO'}, info)
         return {'FINISHED'}
     
 class OPSTYIX_OT_infoTest(Operator):
@@ -461,22 +463,22 @@ class OPSTYIX_OT_infoTest(Operator):
 # This controls the output text inside the UIList
 class OPSTYIX_UL_items(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        scene = bpy.context.scene
-        mytool = scene.OPSTYIX_user_input
-        split = layout.split(factor=.5,align=False)
-        checkbox = "CHECKBOX_HLT" if item.active else "CHECKBOX_DEHLT"
+        #scene = bpy.context.scene
+        #mytool = scene.OPSTYIX_user_input
+        split = layout.split(factor=.5,align=True)
+        #checkbox = "CHECKBOX_HLT" if item.active else "CHECKBOX_DEHLT"
         #split.label(text="Index: %d" % (index))
         #custom_icon = "OUTLINER_OB_%s" % item.obj_type
         #split.prop(item, "name", text="", emboss=False, translate=False, icon=custom_icon)
         #split.label(text=item.name, icon=custom_icon) # avoids renaming the item by accident
         #split.label(text=item.name)
-        split.prop(item, "name", text = '', emboss= False, translate =False)
+        split.prop(item, "name", text = '', emboss= False, translate = False)
         #split = layout.split(factor=.2,align=False)
         split.prop(item, "frame_start", text = '', emboss = False, translate = False)      
         split.prop(item, "frame_end", text = '', emboss = False, translate = False)
         #split.label(text=str(item.frame_start)+" -> "+str(item.frame_end))
         #split = layout.split(factor=.2,align=True)   
-        split.prop(item, "active", text='', emboss=False, icon=checkbox)
+        #split.prop(item, "active", text='', emboss=False, icon=checkbox)
         #split.prop(mytool, 'tool_enablePreviewRange', text = '', emboss=False)
         #split.prop(modifier, 'show_viewport', text='', emboss=False) 
         #split.label(text="-")
@@ -497,19 +499,24 @@ class OPSTYIX_PT_toolkit(Panel):
     bl_category = "OPSTYIX"
     
     def draw(self,context):
-        layout = self.layout
         scene = context.scene
-        mytool = scene.OPSTYIX_user_input
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        my_tool = scene.OPSTYIX_user_input
 
-        column = layout.column()
-        row = layout.row() # Create a new row
-        #row.label(text="Marker Creator")
-        row = column.split(factor=.5) # Create a new row
-        row.prop(mytool,"my_bpm",text="BPM: ")
-        row.prop(mytool,"my_measure",text="Measures: ")
-        row = column.row(align=True)
-        row.operator("opstyix.drawmarkers", text="Create")
-        row.operator("opstyix.deletemarkers", text="Delete")
+        row = layout.row(align = True)
+        col = row.column(align = True)
+        col.prop(my_tool,"my_bpm", text ="BPM")
+        col.prop(my_tool,"my_measure", text ="Measures / Bars")
+        col.prop(my_tool, "my_frame_padding", text = "Frame Offset")
+        col.prop(my_tool, "tool_modifyEndFrame", text= "Update End Frame") 
+
+        row = layout.row(align=True)
+        row.operator("opstyix.drawmarkers", text="Create Markers")
+        row.operator("opstyix.deletemarkers", text="Delete Markers")
+
+
 
 class OPSTYIX_PT_animationBookmarks(Panel):
     #bl_idname = 'TEXT_PT_my_panel'
@@ -525,23 +532,47 @@ class OPSTYIX_PT_animationBookmarks(Panel):
 
     def draw(self, context):
         layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
         scene = bpy.context.scene
         mytool = scene.OPSTYIX_user_input
-    
-        split = layout.split(factor=0.5)
+        
+        row = layout.row(align = True)
+        row.prop(mytool,"my_frame_note", text="Label")
+
+        row = layout.row(align = True)
+        col = row.column(align = True)             
+
+        if scene.OPSTYIX_user_input.setting_override_frames == True:
+            col.enabled = True
+        else:
+            col.enabled = False
+
+        #row = layout.row()
+        col.prop(mytool,"my_frame_start", text = "Start")
+        col.prop(mytool,"my_frame_end", text ="End")
+
         row = layout.row()
+        row.prop(mytool, "setting_override_frames", text = "Override Frames")
 
-        col = row.column(align=True)
-        row = col.row(align=True)
+        split = layout.split(factor=0.5,align= True)
+        #split.alignment = 'CENTER'
+        split.label(text = 'Name', translate = False)
+        split.label(text = 'Start', translate = False)
+        split.label(text = 'End', translate = False)
+        
+        # row = layout.row()        
+        # col = row.column(align=True)
+        # split.label(text = '', translate = False)
+        # split.prop(item, "frame_start", text = 'Start:', emboss = False, translate = False)      
+        # split.prop(item, "frame_end", text = 'End', emboss = False, translate = False)
 
-        split.prop(mytool,"my_frame_note", text="")
-        split.prop(mytool,"my_frame_start", text= "")
-        split.prop(mytool,"my_frame_end", text="")
-
-        #rows = 2
+        # rows = 2
         row = layout.row()
         row.template_list("OPSTYIX_UL_items", "", scene, "custom", scene, "selected_index", rows=6)
 
+        # Align settingsto the right of the UIList
         col = row.column(align=True)
         col.operator("opstyix.list_action", icon='ADD', text="").action = 'ADD'
         col.operator("opstyix.list_action", icon='REMOVE', text="").action = 'REMOVE'
@@ -552,22 +583,29 @@ class OPSTYIX_PT_animationBookmarks(Panel):
         col.operator("opstyix.setframerange", text="", icon="DRIVER_DISTANCE")
         col.prop(scene, "use_preview_range", text="", toggle=True)
 
-class OPSTYIX_PT_settings(Panel):
-    bl_label = "Settings"
-    bl_space_type = "PROPERTIES"
-    bl_region_type = "WINDOW"
-    bl_context = "scene"
-    bl_category = "OPSTYIX"
-    bl_parent_id = "OPSTYIX_PT_toolkit"
+# class OPSTYIX_PT_settings(Panel):
+#     bl_label = "Settings"
+#     bl_space_type = "PROPERTIES"
+#     bl_region_type = "WINDOW"
+#     bl_context = "scene"
+#     bl_category = "OPSTYIX"
+#     bl_parent_id = "OPSTYIX_PT_toolkit"
 
-    def draw(self, context):
-        layout = self.layout
-        scene = context.scene
-        mytool = scene.OPSTYIX_user_input
+#     def draw(self, context):
+#         layout = self.layout
+#         scene = context.scene
+#         mytool = scene.OPSTYIX_user_input
 
-        row = layout.row()
-        row.prop(mytool, "tool_modifyEndFrame", text= "Modify End Frame")
-        row.prop(mytool, "my_frame_padding", text = "Frame Padding")
+#         row = layout.row()
+#         column = layout.column()
+#         # Should probably defunct this, and leave this enabled by default.
+#         # row.prop(mytool, "tool_modifyEndFrame", text= "Modify End Frame") 
+
+#         # row = column.row()
+#         # row.prop(mytool, "setting_useStartEndFrame", text = "Use Start/End Frames")
+
+#         # row = column.row()
+#         # row.prop(mytool, "my_frame_padding", text = "Frame Padding")
         
 #* COLLECTIONS
 # This contains the shot list bookmark data
@@ -589,7 +627,7 @@ def register_original():
     bpy.utils.register_class(MyProperties)
     bpy.utils.register_class(OPSTYIX_PT_toolkit)
     bpy.utils.register_class(OPSTYIX_PT_animationBookmarks)
-    bpy.utils.register_class(OPSTYIX_PT_settings)
+    # bpy.utils.register_class(OPSTYIX_PT_settings)
     bpy.utils.register_class(OPSTYIX_UL_items)
     bpy.utils.register_class(OPSTYIX_OT_DrawMarkers)
     bpy.utils.register_class(OPSTYIX_OT_DeleteMarkers)
@@ -617,7 +655,7 @@ def unregister_original():
     bpy.utils.unregister_class(MyProperties)
     bpy.utils.unregister_class(OPSTYIX_PT_toolkit)
     bpy.utils.unregister_class(OPSTYIX_PT_animationBookmarks)
-    bpy.utils.unregister_class(OPSTYIX_PT_settings)
+    # bpy.utils.unregister_class(OPSTYIX_PT_settings)
     bpy.utils.unregister_class(OPSTYIX_UL_items)
     bpy.utils.unregister_class(OPSTYIX_OT_DrawMarkers)
     bpy.utils.unregister_class(OPSTYIX_OT_DeleteMarkers)
