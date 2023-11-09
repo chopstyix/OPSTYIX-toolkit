@@ -23,6 +23,7 @@ from bpy.types import (
     UIList,
 )
 
+
 # * STORE PROPERTIES (Self Descriptive)
 class MyProperties(PropertyGroup):
     my_bpm: IntProperty(
@@ -167,7 +168,7 @@ class OPSTYIX_OT_actions(Operator):
                     frame_start = scene.frame_preview_start
                     frame_end = scene.frame_preview_end
                 obj_id = len(scene.custom)  # Assigns the object and ID
-                selected_index = len(scene.custom) # Assigns an index ID
+                selected_index = len(scene.custom)  # Assigns an index ID
             else:
                 if userinput.my_frame_start <= userinput.my_frame_end:
                     frame_start = userinput.my_frame_start
@@ -195,6 +196,7 @@ class OPSTYIX_OT_actions(Operator):
             userinput.my_frame_note = ""
 
         return {"FINISHED"}
+
 
 class OPSTYIX_OT_DrawMarkers(Operator):
     #! Operator only works on main scene frame ranges, if user has preview range enabled no visible changes are made which can result in confusion.
@@ -245,10 +247,10 @@ class OPSTYIX_OT_DrawMarkers(Operator):
             scene.timeline_markers.new("[4]", frame=frame_input)
             beat_input += 1
             frame_input = int(beat_input * fpb)
-            bar_end = frame_input-1
+            bar_end = frame_input - 1
             scene.timeline_markers.new("[1]", frame=frame_input)
             beat_input += 1
-            
+
             if scene.OPSTYIX_user_input.tool_enable_auto_bookmarks == True:
                 item = scene.custom.add()
                 item.frame_note = "Bar " + str(bar_iter)
@@ -261,8 +263,7 @@ class OPSTYIX_OT_DrawMarkers(Operator):
                 # else:
                 #     item.frame_start = 1
                 item.frame_end = bar_end
-                #scene.selected_index = len(scene.custom) - 1
-
+                # scene.selected_index = len(scene.custom) - 1
 
         area = bpy.context.area
         old_type = area.type
@@ -279,6 +280,7 @@ class OPSTYIX_OT_DrawMarkers(Operator):
             bpy.context.scene.frame_end = new_frame_end
 
         return {"FINISHED"}
+
 
 # TODO: Add the ability to lock certain bookmarks, which are protected from being deleted by this operator.
 class OPSTYIX_OT_DeleteMarkers(Operator):
@@ -370,7 +372,7 @@ class OPSTYIX_PT_toolkit(Panel):
     bl_context = "scene"
     bl_label = "OPSTYIX Toolkit"
     bl_category = "OPSTYIX"
-    
+
     def draw_header(self, context):
         self.layout.label(icon_value=custom_icons["opstyix_icon"].icon_id)
 
@@ -457,6 +459,7 @@ class OPSTYIX_PT_animationBookmarks(Panel):
         col.operator("opstyix.setframerange", text="", icon="DRIVER_DISTANCE")
         col.prop(scene, "use_preview_range", text="", toggle=True)
 
+
 # * COLLECTIONS
 # This contains the shot list bookmark data properties
 class OPSTYIX_objectCollection(PropertyGroup):
@@ -492,8 +495,11 @@ class OPSTYIX_objectCollection(PropertyGroup):
         description="An string property",
         default="Label",
     )
+
+
 # * Global Variable
 custom_icons = None
+
 
 # * REGISTER
 # * Add all classes below, it will automatically register and unregister
@@ -504,10 +510,11 @@ def register_original():
     global custom_icons
     custom_icons = bpy.utils.previews.new()
     addon_path = os.path.dirname(__file__)
-    icons_dir = os.path.join(addon_path, '..', "icons")
+    icons_dir = os.path.join(addon_path, "..", "icons")
 
-    custom_icons.load("opstyix_icon", os.path.join(icons_dir, "opstyix_icon.png"), 'IMAGE')
-
+    custom_icons.load(
+        "opstyix_icon", os.path.join(icons_dir, "opstyix_icon.png"), "IMAGE"
+    )
 
     bpy.utils.register_class(MyProperties)
     bpy.utils.register_class(OPSTYIX_PT_toolkit)
