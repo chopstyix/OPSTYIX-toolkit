@@ -12,11 +12,14 @@ from bpy.props import (
     CollectionProperty,
 )
 
+from .operators import scatter
+
 from .operators.mat_nodeautoname import register_mat_nodeautoname, unregister_mat_nodeautoname
 from .operators.original import register_original, unregister_original
-from .operators.scatter import register_scatter, unregister_scatter
+#from .operators.scatter import register_scatter, unregister_scatter
 from .operators.kitbash3d import register_kitbash3d, unregister_kitbash3d
 from .operators.vp_emissive import register_vp_emissive, unregister_vp_emissive
+from .operators.outliner import register_outliner, unregister_outliner
 
 bl_info = {
     "name": "OPSTYIX Toolkit",
@@ -40,17 +43,21 @@ class OpstyixPrefs(AddonPreferences):
 def register():
     register_mat_nodeautoname()
     register_original()
-    register_scatter()
+    scatter.register()
     register_kitbash3d()
     register_vp_emissive()
+    register_outliner()
+
     #//register_overlay()
 
 def unregister():      
     unregister_mat_nodeautoname()
     unregister_original()
-    unregister_scatter()
+    #unregister_scatter()
+    scatter.unregister()
     unregister_kitbash3d()
     unregister_vp_emissive()
+    unregister_outliner()
     #//unregister_overlay()
 
 if __name__ == "__main__":

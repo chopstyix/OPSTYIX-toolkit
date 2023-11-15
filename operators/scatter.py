@@ -1,5 +1,6 @@
 import bpy
-          
+from bpy.utils import register_class, unregister_class
+
 from bpy.types import (Operator,
                        Panel,
 					   Menu,
@@ -7,6 +8,89 @@ from bpy.types import (Operator,
                        PropertyGroup,
                        UIList)
 
+class OPSTYIX_OT_get_nodes(Operator):
+  bl_idname = "opstyix.get_shader_nodes"
+  bl_label = "Show all shader nodes"
+  bl_description = "Gets all shader nodes found within the material"
+
+  def execute(self, context):
+    mat = bpy.data.materials.get("Octane Scatter - Placeholder")
+    for n in mat.node_tree.nodes:
+      print(n, n.name)
+
+    return {'FINISHED'}
+
+class OPSTYIX_OT_oct_create_scatter_mat(Operator):
+   bl_idname = "opstyix.octane_create_scatter_mat"
+   bl_label = "Create octane scatter material"
+   bl_description = "Under contruction"
+
+   def execute(self, context):
+      active_obj = context.active_object
+      selected_obj = []
+
+      for obj in context.selected_objects:
+         selected_obj.append(obj)
+      
+      print("active obj = ", active_obj)
+      print("selected obj = ", selected_obj)
+
+      surface_obj = active_obj
+      scatter_obj = selected_obj
+      scatter_obj.remove(active_obj)
+
+      print("scatter obj = ", scatter_obj)
+      print("surface obj = ", surface_obj)
+
+      # Get material
+      mat = bpy.data.materials.get("Octane Scatter - Placeholder")
+      if mat is None:
+        # create material
+        mat = bpy.data.materials.new(name="Octane Scatter - Placeholder")
+        mat.use_nodes = True
+
+      if surface_obj.data.materials:
+         surface_obj.data.materials[0] = mat
+      else:
+         surface_obj.data.materials.append(mat)
+
+      active_material = bpy.context.active_object.active_material 
+      node_tree = active_material.node_tree
+      # selected_node = context.selected_nodes
+      print("active_material = ", active_material)
+      print("node_tree = ", node_tree)
+      # print("selected node = ", selected_node)
+      # bpy.ops.node.select_all(action='DESELECT')
+      # node_tree.nodes["Universal material"].select = True
+      # bpy.ops.node.nw_swtch_node_type(to_type='OctaneGreyscaleImage')  
+      #! For some reason this doesn't work, maybe it needs to be called upon in a separate operator?
+      #Remove it
+      # mat.node_tree.nodes.remove(mat.node_tree.nodes['Principled BDSF'])
+      # mat.node_tree.nodes.remove(mat.node_tree.nodes['Uni
+      # active_material = bpy.context.active_object.active_material 
+      # node_tree = active_material.node_tree      
+      # node_tree.nodes.remove(node_tree.nodes['Universal material'])
+      bpy.ops.opstyix.octane_scatter_surface_setup()
+      print("teeeeeeest")
+
+      return {'FINISHED'}
+   
+class OPSTYIX_OT_oct_scatter_on_surface_setup(Operator):
+   bl_idname = "opstyix.octane_scatter_surface_setup"
+   bl_label = "Setup Scatter on Surface"
+   bl_description = "TBD"
+
+   def execute(self, context):
+      active_material = bpy.context.active_object.active_material 
+      node_tree = active_material.node_tree
+      #Remove it
+      # mat.node_tree.nodes.remove(mat.node_tree.nodes['Principled BDSF'])
+      # mat = bpy.data.materials.get("Octane Scatter - Placeholder")      
+      node_tree.nodes.remove(node_tree.nodes['Universal material'])
+      print("HIIIII")
+
+      return {'FINISHED'}    
+   
 class OPSTYIX_OT_OctaneScatter(Operator):
     bl_idname = "opstyix.octane_scatter"
     bl_label = "Initiate Auto Scatter"
@@ -40,7 +124,7 @@ class OPSTYIX_OT_OctaneScatter(Operator):
             bpy.data.materials[scatter_material].node_tree.nodes[scatter_nodes[idx]].inputs[0].default_value = scatter_array[idx]               
     
         return {'FINISHED'}  
-    
+   
 class OPSTYIX_PT_OctanePanel(bpy.types.Panel):
     bl_label = "OPSTYIX - Octane Scatter Helper"
     bl_category = "OPSTYIX"
@@ -64,19 +148,32 @@ class OPSTYIX_PT_OctanePanel(bpy.types.Panel):
         #row = layout.row()
         #self.layout.prop(context.scene, "test_collection")        
 
+
+        
         box = layout.box()
         split = box.split()            
         col = split.column(align=True)
         row = col.row(align=True) 
         row.operator("opstyix.octane_scatter")
 
-def register_scatter():
-    bpy.utils.register_class(OPSTYIX_OT_OctaneScatter)
-    bpy.utils.register_class(OPSTYIX_PT_OctanePanel)
+classes = [
+   OPSTYIX_OT_get_nodes,
+   OPSTYIX_OT_oct_scatter_on_surface_setup,
+   OPSTYIX_OT_oct_create_scatter_mat,
+   OPSTYIX_OT_OctaneScatter,
+   OPSTYIX_PT_OctanePanel,
+]
+
+def register():
+    for cls in classes:
+      register_class(cls)
+    # bpy.utils.register_class(OPSTYIX_OT_OctaneScatter)
+    # bpy.utils.register_class(OPSTYIX_PT_OctanePanel)
+    bpy.types.Scene.OPSTYIX_active_collection = bpy.props.PointerProperty(type=bpy.types.Collection)
     
-def unregister_scatter():
-    bpy.utils.unregister_class(OPSTYIX_OT_OctaneScatter)
-    bpy.utils.unregister_class(OPSTYIX_PT_OctanePanel)
+def unregister():
+    for cls in classes:
+       unregister_class(cls)
 
 #*  RUN ON LOAD
 print("scatter.py loaded")

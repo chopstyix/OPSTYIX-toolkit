@@ -49,7 +49,7 @@ class OPSTYIX_OT_MAT_NodeAutoname(Operator):
       #sss_list = ['sss']
       
       #* Setup
-      active_material = bpy.context.active_object.active_material
+      active_material = bpy.context.active_object.active_material 
       node_tree = active_material.node_tree
 
       #TODO: Optimize Code Support Node Switching; Too many if statements lol
