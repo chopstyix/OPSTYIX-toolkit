@@ -229,11 +229,28 @@ class OPSTYIX_OT_MAT_NodeAutoname(Operator):
         padding_y = 38
         padding_x = 350
         curr_pos = n[0].location
+        universal_flag = False
+        transmission_flag = False
+
+
+        if 'transmission_tex' in locals():
+          if 'universal_mat' in locals():
+            universal_flag = True
+            transmission_tex.location = [(universal_mat.location.x - padding_x), universal_mat.location.y]
+            node_tree.links.new(transmission_tex.outputs[0], universal_mat.inputs['Transmission'])                
+          curr_pos = [transmission_tex.location.x, (transmission_tex.location.y - padding_y)]
+          node_tree.links.new(transformation_node.outputs[0], transmission_tex.inputs['UV transform'])
+          transmission_flag = True
 
         if 'albedo_tex' in locals():
           if 'universal_mat' in locals():
-            albedo_tex.location = [(universal_mat.location.x - padding_x), universal_mat.location.y]
-            node_tree.links.new(albedo_tex.outputs[0], universal_mat.inputs['Albedo'])                
+            node_tree.links.new(albedo_tex.outputs[0], universal_mat.inputs['Albedo'])              
+            if universal_flag == False:
+              albedo_tex.location = [(universal_mat.location.x - padding_x), universal_mat.location.y]
+            else:
+              albedo_tex.location = curr_pos
+          if transmission_flag == True:
+            albedo_tex.location = curr_pos
           curr_pos = [albedo_tex.location.x, (albedo_tex.location.y - padding_y)]
           node_tree.links.new(transformation_node.outputs[0], albedo_tex.inputs['UV transform'])
 
