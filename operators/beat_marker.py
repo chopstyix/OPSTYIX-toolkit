@@ -86,7 +86,7 @@ class OPSTYIX_OT_actions(Operator):
     def invoke(self, context, event):
         scene = context.scene
         idx = scene.selected_index
-        userinput = scene.OPSTYIX_MarkerProperties
+        # userinput = scene.OPSTYIX_MarkerProperties
 
         try:
             item = scene.OPSTYIX_AnimationBookmark[idx]
