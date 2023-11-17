@@ -6,3 +6,4 @@ operators/overlay.py
 operators/scatter.py
 operators/setup_hdri.py
 operators/vp_emissive.py
+operators/outliner.py
