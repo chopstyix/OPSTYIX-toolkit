@@ -1,2 +1,8 @@
 __pycache__/
 operators/__pycache__/
+operators/kitbash3d.py
+operators/mat_nodeautoname.py
+operators/overlay.py
+operators/scatter.py
+operators/setup_hdri.py
+operators/vp_emissive.py
