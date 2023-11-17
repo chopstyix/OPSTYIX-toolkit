@@ -271,7 +271,7 @@ class OPSTYIX_OT_ClearBookmarks(Operator):
 class OPSTYIX_OT_SetFrameRangeActive(Operator):
     bl_idname = "opstyix.set_frame_range_active"
     bl_label = "Set Frame Range"
-    bl_description = "Set Frame Range"
+    bl_description = "Set the scenes frame range based on highlighted bookmark"
 
     # If nothing is found in the UIList, the button is disabled
     @classmethod
@@ -318,8 +318,8 @@ class OPSTYIX_OT_SetFrameRangeActive(Operator):
 
 class OPSTYIX_OT_SetFrameRangeSelected(Operator):
     bl_idname = "opstyix.set_frame_range_selected"
-    bl_label = "Set frame range from selected bookmark"
-    bl_description = "Sets the scenes frame range based off the selected bookmark"
+    bl_label = "Set Frame Range from Selected Bookmarks"
+    bl_description = "Sets the scenes frame range based off selected bookmark(s)"
 
     # If nothing is found in the UIList, the button is disabled
     @classmethod
