@@ -94,11 +94,11 @@ class OPSTYIX_OT_actions(Operator):
             pass
         else:
             if self.action == "DOWN" and idx < len(scene.OPSTYIX_AnimationBookmark) - 1:
-                item_next = scene.OPSTYIX_AnimationBookmark[idx + 1].name
+                # item_next = scene.OPSTYIX_AnimationBookmark[idx + 1].name
                 scene.OPSTYIX_AnimationBookmark.move(idx, idx + 1)
                 scene.selected_index += 1
             elif self.action == "UP" and idx >= 1:
-                item_prev = scene.OPSTYIX_AnimationBookmark[idx - 1].name
+                # item_prev = scene.OPSTYIX_AnimationBookmark[idx - 1].name
                 scene.OPSTYIX_AnimationBookmark.move(idx, idx - 1)
                 scene.selected_index -= 1
             elif self.action == "REMOVE":
@@ -130,9 +130,6 @@ class OPSTYIX_OT_actions(Operator):
             item.bookmark_frame_start = frame_start
             item.bookmark_frame_end = frame_end
             scene.selected_index = selected_index
-
-            # Reset Bookmark Label
-            userinput.my_bookmark_label = "Test"
 
         return {"FINISHED"}
 
@@ -199,7 +196,6 @@ class OPSTYIX_OT_DrawMarkers(Operator):
                 item.obj_id = len(scene.OPSTYIX_AnimationBookmark)
                 item.bookmark_frame_start = bar_start
                 item.bookmark_frame_end = bar_end
-                # scene.selected_index = len(scene.OPSTYIX_AnimationBookmark) - 1
 
         area = bpy.context.area
         old_type = area.type
@@ -262,9 +258,9 @@ class OPSTYIX_OT_setFrameRange(Operator):
         selectedIndex = scene.selected_index
         print("Selected index from UIList:", selectedIndex)
 
-        # framepadding = scene.OPSTYIX_MarkerProperties.input_frame_offset
-        framepadding = 0
-        print("framepadding: ", framepadding)
+        # frame_padding = scene.OPSTYIX_MarkerProperties.input_frame_offset
+        frame_padding = 0
+        print("frame_padding: ", frame_padding)
         set_start_frame = scene.OPSTYIX_AnimationBookmark[selectedIndex].frame_start
         set_end_frame = scene.OPSTYIX_AnimationBookmark[selectedIndex].frame_end
 
@@ -273,12 +269,12 @@ class OPSTYIX_OT_setFrameRange(Operator):
                 set_start_frame,
                 set_end_frame,
             )
-            scene.frame_preview_start = set_start_frame + framepadding
-            scene.frame_preview_end = set_end_frame + framepadding
+            scene.frame_preview_start = set_start_frame + frame_padding
+            scene.frame_preview_end = set_end_frame + frame_padding
         else:
             info = "Set Range from frames %d to %d" % (set_start_frame, set_end_frame)
-            scene.frame_start = set_start_frame + framepadding
-            scene.frame_end = set_end_frame + framepadding
+            scene.frame_start = set_start_frame + frame_padding
+            scene.frame_end = set_end_frame + frame_padding
 
         self.report({"INFO"}, info)
         return {"FINISHED"}
@@ -288,11 +284,6 @@ class OPSTYIX_OT_set_range_select(Operator):
     bl_idname = "opstyix.set_range_select"
     bl_label = "Set Selected Frame Range"
     bl_description = "Sets Selected Bookmark Frame Range"
-
-    # ? 2023-11-05
-    # ? Revisting this block of code, seems like 'OPSTYIX_AnimationBookmark' can be renamed to something else
-    # ? perhaps it should be renamed to animationBookmarks?
-    # TODO: Renamed 'OPSTYIX_AnimationBookmark' to 'animation bookmarks'. Name not final.
 
     # If nothing is found in the UIList, the button is disabled
     @classmethod
@@ -323,7 +314,7 @@ class OPSTYIX_OT_set_range_select(Operator):
             self.report({"INFO"}, "No bookmarks were selected.")
             return {"FINISHED"}
 
-        framepadding = bpy.data.scenes["Scene"].OPSTYIX_MarkerProperties.input_frame_offset
+        frame_padding = bpy.data.scenes["Scene"].OPSTYIX_MarkerProperties.input_frame_offset
         set_start_frame = lowest_frame
         set_end_frame = highest_frame
 
@@ -332,27 +323,15 @@ class OPSTYIX_OT_set_range_select(Operator):
                 set_start_frame,
                 set_end_frame,
             )
-            scene.frame_preview_start = set_start_frame - framepadding
-            scene.frame_preview_end = set_end_frame + framepadding
+            scene.frame_preview_start = set_start_frame - frame_padding
+            scene.frame_preview_end = set_end_frame + frame_padding
         else:
             info = "Set Range from frames %d to %d" % (set_start_frame, set_end_frame)
-            scene.frame_start = set_start_frame - framepadding
-            scene.frame_end = set_end_frame + framepadding
+            scene.frame_start = set_start_frame - frame_padding
+            scene.frame_end = set_end_frame + frame_padding
 
         self.report({"INFO"}, info)
         return {"FINISHED"}
-
-
-class OPSTYIX_OT_infoTest(Operator):
-    """Tooltip"""
-
-    bl_idname = "opstyix.custom_test"
-    bl_label = "Test"
-
-    def execute(self, context):
-        self.report({"INFO"}, "Printing report to Info window.")
-        return {"FINISHED"}
-
 
 # * DRAW PANELS
 # This controls the output text inside the UIList
@@ -465,7 +444,7 @@ class OPSTYIX_PT_AnimationBookmark(Panel):
 
 # * COLLECTIONS
 # This contains the shot list bookmark data properties
-class AnimationBookmark(PropertyGroup):
+class AnimationBookmarkProp(PropertyGroup):
     id: IntProperty(
         name="Index Value",
         description="An integer property",
@@ -517,9 +496,8 @@ classes = [
     OPSTYIX_OT_ClearBookmarks,
     OPSTYIX_OT_setFrameRange,
     OPSTYIX_OT_set_range_select,
-    AnimationBookmark,
-    OPSTYIX_OT_infoTest,
     OPSTYIX_OT_actions,
+    AnimationBookmarkProp,
 ]
 
 
@@ -539,7 +517,7 @@ def register():
 
     # Custom Properties
     bpy.types.Scene.OPSTYIX_MarkerProperties = PointerProperty(type=MarkerProperties)
-    bpy.types.Scene.OPSTYIX_AnimationBookmark = CollectionProperty(type=AnimationBookmark)
+    bpy.types.Scene.OPSTYIX_AnimationBookmark = CollectionProperty(type=AnimationBookmarkProp)
     bpy.types.Scene.selected_index = IntProperty()
 
 
