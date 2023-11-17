@@ -12,7 +12,7 @@ from bpy.props import (
     CollectionProperty,
 )
 
-from .operators import scatter, original
+from .operators import scatter, beat_marker
 
 # from .operators.mat_nodeautoname import register_mat_nodeautoname, unregister_mat_nodeautoname
 # from .operators.original import register_original, unregister_original
@@ -43,7 +43,7 @@ class OpstyixPrefs(AddonPreferences):
 def register():
     # register_mat_nodeautoname()
     # register_original()
-    original.register()
+    beat_marker.register()
     # scatter.register()
     # register_kitbash3d()
     # register_vp_emissive()
@@ -55,7 +55,7 @@ def unregister():
     # unregister_mat_nodeautoname()
     # unregister_original()
     # unregister_scatter()
-    original.unregister()
+    beat_marker.unregister()
     # scatter.unregister()
     # unregister_kitbash3d()
     # unregister_vp_emissive()
