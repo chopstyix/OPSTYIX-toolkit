@@ -58,22 +58,6 @@ class MarkerProperties(PropertyGroup):
         default=True,
     )
 
-    # measure_Start: IntProperty(
-    #     name="Start of Beat Marker Placements",
-    #     description="A integer property",
-    #     default=0,
-    #     min=0,
-    #     max=99999,
-    # )
-
-    # my_structure: IntProperty(
-    #     name="Structure Value",
-    #     description="Amount of Structures in the animation",
-    #     default=0,
-    #     min=0,
-    #     max=99,
-    # )
-
     tool_enable_auto_bookmarks: BoolProperty(
         name="Enable Auto-Bookmarks",
         description="Automatically creates animation bookmarks when enabled",
@@ -83,7 +67,6 @@ class MarkerProperties(PropertyGroup):
 
 # * OPERATORS (Executable Functions)
 class OPSTYIX_OT_actions(Operator):
-    # """Move items up and down, add and remove"""
     bl_idname = "opstyix.list_action"
     bl_label = "Organize Shot List"
     bl_description = "Creates and deletes shot bookmarks for easy references"
@@ -114,57 +97,33 @@ class OPSTYIX_OT_actions(Operator):
                 item_next = scene.OPSTYIX_AnimationBookmark[idx + 1].name
                 scene.OPSTYIX_AnimationBookmark.move(idx, idx + 1)
                 scene.selected_index += 1
-                # This needs to be fixed, it's output item.name is incorrect
-                # info = 'Item "%s" moved to position %d' % (item.name, scene.selected_index + 1)
-                # self.report({'INFO'}, info)
             elif self.action == "UP" and idx >= 1:
                 item_prev = scene.OPSTYIX_AnimationBookmark[idx - 1].name
                 scene.OPSTYIX_AnimationBookmark.move(idx, idx - 1)
                 scene.selected_index -= 1
-                # This needs to be fixed, it's output item.name is incorrect
-                # info = 'Item "%s" moved to position %d' % (item.name, scene.selected_index + 1)
-                # self.report({'INFO'}, info)
             elif self.action == "REMOVE":
                 info = 'Item "%s" removed from list' % (scene.OPSTYIX_AnimationBookmark[idx].bookmark_name)
-                # scene.selected_index -= None
                 scene.OPSTYIX_AnimationBookmark.remove(idx)
                 self.report({"INFO"}, info)
-                # print("Active index ",scene.active_index)
-                # print("Selected index ", scene.selected_index)
             elif self.action == "DESELECT_ALL":
-                # Create a loop and select 'select_bookmark' to False.
                 for i in scene.OPSTYIX_AnimationBookmark:
                     i.bookmark_select = False
             elif self.action == "SELECT_ALL":
-                # Create a loop and select 'select_bookmark' to False.
                 for i in scene.OPSTYIX_AnimationBookmark:
                     i.bookmark_select = True
 
         if self.action == "ADD":
-            # if scene.OPSTYIX_MarkerProperties.setting_override_frames == False:
-            # Check if user has 'Preview Range' disabled; if enabled, reference Preview Range Start and End frames
             if scene.use_preview_range == False:
                 frame_start = scene.frame_start
                 frame_end = scene.frame_end
             else:
                 frame_start = scene.frame_preview_start
                 frame_end = scene.frame_preview_end
-            obj_id = len(scene.OPSTYIX_AnimationBookmark)  # Assigns the object and ID
-            selected_index = len(scene.OPSTYIX_AnimationBookmark)  # Assigns an index ID
-            # else:
-            # if userinput.my_frame_start <= userinput.my_frame_end:
-            #     frame_start = userinput.my_frame_start
-            #     frame_end = userinput.my_frame_end
-            #     obj_id = len(scene.OPSTYIX_AnimationBookmark)  # Assign obj id
-            #     selected_index = len(scene.OPSTYIX_AnimationBookmark)  # Assign index
-
-            # else:
-            #     self.report({"INFO"}, "Starting frame cannot be after end frame!")
-            #     print("hey")
-            #     return {"FINISHED"}
+            obj_id = len(scene.OPSTYIX_AnimationBookmark)
+            selected_index = len(scene.OPSTYIX_AnimationBookmark)
 
             # Create item data
-            item = scene.OPSTYIX_AnimationBookmark.add()  # Assigns the add function to "item"
+            item = scene.OPSTYIX_AnimationBookmark.add()
             item.bookmark_select = False
             item.bookmark_label = "New Shot"
             item.id = obj_id
@@ -476,24 +435,6 @@ class OPSTYIX_PT_AnimationBookmark(Panel):
         layout.use_property_decorate = False
 
         scene = bpy.context.scene
-        # mytool = scene.OPSTYIX_MarkerProperties
-
-        # row = layout.row(align=True)
-        # row.prop(mytool, "my_bookmark_label", text="Bookmark Label")
-
-        # row = layout.row(align=True)
-        # col = row.column(align=True)
-
-        # if scene.OPSTYIX_MarkerProperties.setting_override_frames == True:
-        #     col.enabled = True
-        # else:
-        #     col.enabled = False
-
-        # col.prop(mytool, "my_frame_start", text="Start")
-        # col.prop(mytool, "my_frame_end", text="End")
-
-        # row = layout.row()
-        # row.prop(mytool, "setting_override_frames", text="Override Frames")
 
         row = layout.row()
         row.template_list(
