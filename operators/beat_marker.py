@@ -385,7 +385,7 @@ class OPSTYIX_UL_items(UIList):
             translate=False,
             icon=checkbox,
         )
-        label = layout.split(factor=0.6, align=True)
+        label = layout.split(factor=0.435, align=True)
         label.prop(item, "name", text="", emboss=False, translate=False)
         frame = label.split(factor=0, align=True)
         frame.prop(item, "frame_start", text="", emboss=False, translate=False)
