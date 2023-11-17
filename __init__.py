@@ -12,7 +12,7 @@ from bpy.props import (
     CollectionProperty,
 )
 
-from .operators import scatter, beat_marker
+from .operators import beat_marker
 
 # from .operators.mat_nodeautoname import register_mat_nodeautoname, unregister_mat_nodeautoname
 # from .operators.original import register_original, unregister_original
