@@ -281,7 +281,6 @@ class OPSTYIX_OT_SetFrameRangeActive(Operator):
     def execute(self, context):
         scene = context.scene
         selected_index = scene.selected_index
-        active_flag = False
         print("Selected index from UIList:", selected_index)
 
         # frame_padding = scene.OPSTYIX_MarkerProperties.input_frame_offset

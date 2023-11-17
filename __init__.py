@@ -12,11 +12,11 @@ from bpy.props import (
     CollectionProperty,
 )
 
-from .operators import beat_marker
+from .operators import beat_marker, octane_node_organizer
 
 bl_info = {
     "name": "OPSTYIX Toolkit",
-    "description": "A batch of tools that help develop my workflow :)",
+    "description": "A collection of scripts that makes animating to music just a bit easier :)",
     "author": "OPSTYIX",
     "version": (1, 1),
     "blender": (4, 1, 0),
@@ -28,9 +28,11 @@ bl_info = {
 
 def register():
     beat_marker.register()
+    octane_node_organizer.register()
 
 def unregister():      
     beat_marker.unregister()
+    octane_node_organizer.unregister()
 
 if __name__ == "__main__":
     register()
