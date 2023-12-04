@@ -8,6 +8,25 @@ from bpy.types import (Operator,
                        PropertyGroup,
                        UIList)
 
+from bpy.props import (
+    StringProperty,
+    BoolProperty,
+    IntProperty,
+    # FloatProperty,
+    # FloatVectorProperty,
+    # EnumProperty,
+    PointerProperty,
+    CollectionProperty,
+)
+class OctScatterProp(PropertyGroup):
+    seed: IntProperty(
+        name="Seed Value",
+        description="An Integer Value",
+        default=0,
+        min=0,
+        max=999999,
+    )
+
 class OPSTYIX_OT_get_nodes(Operator):
   bl_idname = "opstyix.get_shader_nodes"
   bl_label = "Show all shader nodes"
@@ -119,9 +138,14 @@ class OPSTYIX_OT_OctaneScatter(Operator):
 
           bpy.data.meshes[active_object.data.name].octane.octane_geo_node_collections.osl_geo_node = "Scatter on surface" # ?
 
-          bpy.data.materials[scatter_material].node_tree.nodes["Emitter Object"].inputs[0].default_value = active_object
-          for idx,x in enumerate(scatter_array):
-            bpy.data.materials[scatter_material].node_tree.nodes[scatter_nodes[idx]].inputs[0].default_value = scatter_array[idx]               
+          # bpy.data.materials[scatter_material].node_tree.nodes["Emitter Object"].inputs[0].default_value = active_object
+          bpy.data.materials[scatter_material].node_tree.nodes["Emitter Object"].object_ptr = active_object
+          for idx,x in enumerate(scatter_nodes):
+            bpy.data.materials[scatter_material].node_tree.nodes[scatter_nodes[idx]].object_ptr = None
+          
+          for idx,x in enumerate(scatter_array):            
+            bpy.data.materials[scatter_material].node_tree.nodes[scatter_nodes[idx]].object_ptr = scatter_array[idx]
+            # bpy.data.materials[scatter_material].node_tree.nodes[scatter_nodes[idx]].inputs[0].default_value = scatter_array[idx]               
     
         return {'FINISHED'}  
    
@@ -135,28 +159,42 @@ class OPSTYIX_PT_OctanePanel(bpy.types.Panel):
         layout = self.layout
 
         obj = context.active_object
-        active_object = obj
- 
+        scatter_material = bpy.data.objects[obj.name].active_material.name
+
         row = layout.row()
-        row.label(text="Selected Emitter: " + obj.name)
+        col = row.column()
+        col.label(text="Selected Emitter: " + obj.name)
+        # row = layout.row()
+        col.label(text="Scatter Material: " + scatter_material)
+        # row = layout.row()
+        # row = layout.row("Seed: ")
 
         layout = self.layout
 
         row = layout.row()
-        self.layout.prop(context.scene, "OPSTYIX_active_collection", text = "Active Collection")
-        
+        col = row.column()
+        col.prop(context.scene, "OPSTYIX_active_collection", text = "Active Collection")
+        # col.prop(context.scene.OPSTYIX_OctScatterProperties, "seed", text = "Seed")
+        # bpy.data.materials["OS_Crocus"].node_tree.nodes["Scatter on surface"].inputs[8].default_value
+        col.prop(bpy.data.materials[scatter_material].node_tree.nodes["Scatter on surface"].inputs[22],"default_value",text = "Instances")
+        col.prop(bpy.data.materials[scatter_material].node_tree.nodes["Scatter on surface"].inputs[8],"default_value",text = "Seed Selection")
+        col.prop(bpy.data.materials[scatter_material].node_tree.nodes["Scatter on surface"].inputs[20],"default_value",text = "Seed Location")        
         #row = layout.row()
         #self.layout.prop(context.scene, "test_collection")        
 
 
         
-        box = layout.box()
-        split = box.split()            
-        col = split.column(align=True)
-        row = col.row(align=True) 
+        # box = layout.box()
+        # split = box.split()            
+        # col = split.column(align=True)
+        row = layout.row()
+        col = row.column()        
+        # row = col.row(align=True) 
         row.operator("opstyix.octane_scatter")
+        col.operator("bpy.ops.view3d.localview", text = "Toggle Local View")
 
 classes = [
+   OctScatterProp,
    OPSTYIX_OT_get_nodes,
    OPSTYIX_OT_oct_scatter_on_surface_setup,
    OPSTYIX_OT_oct_create_scatter_mat,
@@ -169,11 +207,14 @@ def register():
       register_class(cls)
     # bpy.utils.register_class(OPSTYIX_OT_OctaneScatter)
     # bpy.utils.register_class(OPSTYIX_PT_OctanePanel)
+    bpy.types.Scene.OPSTYIX_OctScatterProperties = PointerProperty(type=OctScatterProp)
     bpy.types.Scene.OPSTYIX_active_collection = bpy.props.PointerProperty(type=bpy.types.Collection)
     
 def unregister():
     for cls in classes:
        unregister_class(cls)
+
+    del bpy.types.Scene.OPSTYIX_OctScatterProperties
 
 #*  RUN ON LOAD
 print("octane_scatter.py loaded")
