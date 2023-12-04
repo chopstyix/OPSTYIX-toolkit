@@ -26,8 +26,9 @@ from bpy.types import (
 )
 
 
+
 # * STORE PROPERTIES (Self Descriptive)
-class MarkerProperties(PropertyGroup):
+class MarkerProp(PropertyGroup):
     input_bpm: IntProperty(
         name="BPM Value",
         description="Value used to create beat markers",
@@ -64,9 +65,45 @@ class MarkerProperties(PropertyGroup):
         default=False,
     )
 
+class BookmarkProp(PropertyGroup):
+    id: IntProperty(
+        name="Index Value",
+        description="An integer property",
+        default=0,
+        min=0,
+        max=99999,
+    )
+
+    bookmark_select: BoolProperty(
+        name="Select Bookmark",
+        description="A bool property",
+        default=True,
+    )
+
+    name: StringProperty(
+        name="Bookmark Name",
+        description="An string property",
+        default="New Name",
+    )
+
+    frame_start: IntProperty(
+        name="Start Frame Value",
+        description="An integer property",
+        default=1,
+        min=0,
+        max=99999,
+    )
+
+    frame_end: IntProperty(
+        name="End Frame Value",
+        description="An integer property",
+        default=1,
+        min=0,
+        max=99999,
+    )
 
 # * OPERATORS (Executable Functions)
-class OPSTYIX_OT_actions(Operator):
+class OPSTYIX_OT_Actions(Operator):
     bl_idname = "opstyix.list_action"
     bl_label = "Organize Shot List"
     bl_description = "Creates and deletes shot bookmarks for easy references"
@@ -157,7 +194,7 @@ class OPSTYIX_OT_BookmarkDeselectAll(Operator):
 
         return {"FINISHED"}
 
-class OPSTYIX_OT_draw_markers(Operator):
+class OPSTYIX_OT_DrawMarkers(Operator):
     #! Operator only works on main scene frame ranges, if user has preview range enabled no visible changes are made which can result in confusion.
     # TODO: Check for preview frame range and disable if necessary.
 
@@ -238,7 +275,7 @@ class OPSTYIX_OT_draw_markers(Operator):
 
 
 # TODO: Add the ability to lock certain bookmarks, which are protected from being deleted by this operator.
-class OPSTYIX_OT_delete_markers(Operator):
+class OPSTYIX_OT_DeleteMarkers(Operator):
     bl_idname = "opstyix.delete_markers"
     bl_label = "Delete Markers"
     bl_description = "Initialize the deletion of all markers within the scene"
@@ -370,7 +407,7 @@ class OPSTYIX_OT_SetFrameRangeSelected(Operator):
 
 # * DRAW PANELS
 # This controls the output text inside the UIList
-class OPSTYIX_UL_items(UIList):
+class OPSTYIX_UL_Items(UIList):
     def draw_item(
         self, context, layout, data, item, icon, active_data, active_propname, index
     ):
@@ -447,7 +484,7 @@ class OPSTYIX_PT_AnimationBookmark(Panel):
 
         row = layout.row()
         row.template_list(
-            "OPSTYIX_UL_items",
+            "OPSTYIX_UL_Items",
             "",
             scene,
             "OPSTYIX_AnimationBookmark",
@@ -476,61 +513,22 @@ class OPSTYIX_PT_AnimationBookmark(Panel):
         # col.prop(scene, "use_preview_range", text="", toggle=True)
 
 
-# * COLLECTIONS
-# This contains the shot list bookmark data properties
-class AnimationBookmarkProp(PropertyGroup):
-    id: IntProperty(
-        name="Index Value",
-        description="An integer property",
-        default=0,
-        min=0,
-        max=99999,
-    )
-
-    bookmark_select: BoolProperty(
-        name="Select Bookmark",
-        description="A bool property",
-        default=True,
-    )
-
-    name: StringProperty(
-        name="Bookmark Name",
-        description="An string property",
-        default="New Name",
-    )
-
-    frame_start: IntProperty(
-        name="Start Frame Value",
-        description="An integer property",
-        default=1,
-        min=0,
-        max=99999,
-    )
-
-    frame_end: IntProperty(
-        name="End Frame Value",
-        description="An integer property",
-        default=1,
-        min=0,
-        max=99999,
-    )
-
 # * Global Variable
 custom_icons = None
 
 # * Define all the classes
 classes = [
-    MarkerProperties,
+    MarkerProp,
+    BookmarkProp,    
     OPSTYIX_PT_MainPanel,
     OPSTYIX_PT_AnimationBookmark,
-    OPSTYIX_UL_items,
-    OPSTYIX_OT_draw_markers,
-    OPSTYIX_OT_delete_markers,
+    OPSTYIX_UL_Items,
+    OPSTYIX_OT_DrawMarkers,
+    OPSTYIX_OT_DeleteMarkers,
     OPSTYIX_OT_ClearBookmarks,
     OPSTYIX_OT_SetFrameRangeActive,
     OPSTYIX_OT_SetFrameRangeSelected,
-    OPSTYIX_OT_actions,
-    AnimationBookmarkProp,
+    OPSTYIX_OT_Actions,
     OPSTYIX_OT_BookmarkSelectAll,
     OPSTYIX_OT_BookmarkDeselectAll,
 ]
@@ -551,8 +549,8 @@ def register():
         register_class(cls)
 
     # Custom Properties
-    bpy.types.Scene.OPSTYIX_MarkerProperties = PointerProperty(type=MarkerProperties)
-    bpy.types.Scene.OPSTYIX_AnimationBookmark = CollectionProperty(type=AnimationBookmarkProp)
+    bpy.types.Scene.OPSTYIX_MarkerProperties = PointerProperty(type=MarkerProp)
+    bpy.types.Scene.OPSTYIX_AnimationBookmark = CollectionProperty(type=BookmarkProp)
     bpy.types.Scene.selected_index = IntProperty()
 
 
