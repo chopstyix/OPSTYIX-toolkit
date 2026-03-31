@@ -12,7 +12,7 @@ from bpy.props import (
     CollectionProperty,
 )
 
-from .operators import beat_marker, octane_node_organizer, octane_scatter, kitbash3d, pulse
+from .operators import beat_marker, octane_node_organizer, octane_scatter, pulse
 
 bl_info = {
     "name": "OPSTYIX Toolkit",
@@ -30,14 +30,12 @@ def register():
     beat_marker.register()
     octane_node_organizer.register()
     octane_scatter.register()
-    kitbash3d.register()
     pulse.register()
 
 def unregister():      
     beat_marker.unregister()
     octane_node_organizer.unregister()
     octane_scatter.unregister()
-    kitbash3d.unregister()
     pulse.unregister()
 
 if __name__ == "__main__":
