@@ -217,16 +217,17 @@ class OPSTYIX_OT_DrawMarkers(Operator):
         print("Frame Offset:", input_frame_offset)
 
         # Calculate Frame per Beat
-        scene_fps = bpy.context.scene.render.fps
+        render = bpy.context.scene.render
+        scene_fps = render.fps / render.fps_base
 
-        fpb = scene_fps / input_bpm * 60
+        fpb = scene_fps * 60 / input_bpm
 
         print("Frames per beat is: ", fpb)
 
         # Begin Main Code
         beat_total = input_measure * 4
         bar_iter = 0
-        frame_input = 1 + input_frame_offset
+        frame_input = input_frame_offset
         beat_input = 1
         scene.timeline_markers.new("[1]", frame=frame_input)
         print("Placing beat marker on frame", frame_input)
@@ -235,16 +236,16 @@ class OPSTYIX_OT_DrawMarkers(Operator):
             # print("New Measure")
             bar_iter += 1
             bar_start = frame_input
-            frame_input = int(beat_input * fpb) + input_frame_offset
+            frame_input = round(beat_input * fpb) + input_frame_offset
             scene.timeline_markers.new("[2]", frame=frame_input)
             beat_input += 1
-            frame_input = int(beat_input * fpb) + input_frame_offset
+            frame_input = round(beat_input * fpb) + input_frame_offset
             scene.timeline_markers.new("[3]", frame=frame_input)
             beat_input += 1
-            frame_input = int(beat_input * fpb) + input_frame_offset
+            frame_input = round(beat_input * fpb) + input_frame_offset
             scene.timeline_markers.new("[4]", frame=frame_input)
             beat_input += 1
-            frame_input = int(beat_input * fpb) + input_frame_offset
+            frame_input = round(beat_input * fpb) + input_frame_offset
             bar_end = frame_input - 1
             scene.timeline_markers.new("[1]", frame=frame_input)
             beat_input += 1
@@ -266,7 +267,7 @@ class OPSTYIX_OT_DrawMarkers(Operator):
         area.type = old_type
 
         if input_modify_end_frame == True:
-            new_frame_end = int(fpb * input_measure * 4 - 1)
+            new_frame_end = round(fpb * input_measure * 4) - 1
             print("End frame will be: ", new_frame_end)
             scene.frame_start = 1
             scene.frame_end = new_frame_end

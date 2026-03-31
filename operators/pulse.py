@@ -20,7 +20,9 @@ HOW TO USE:
   3. N-panel → "Pulse" tab → adjust → Insert or Overwrite.
 """
 
+import os
 import bpy
+import bpy.utils.previews
 import math
 import random
 from bpy.types import Operator, Panel, PropertyGroup
@@ -74,8 +76,15 @@ def _get_active_fcurve(context):
             return curve
     return None
 
-def _curve_label(fc):
-    return fc.data_path.split('"')[-2] if '"' in fc.data_path else fc.data_path
+def _get_selected_fcurves(context):
+    obj = context.active_object
+    if obj is None or obj.animation_data is None:
+        return []
+    action = obj.animation_data.action
+    if action is None:
+        return []
+    return [fc for fc in _get_all_fcurves(action) if fc.select]
+
 
 
 # Known data_path fragments that store values in radians
@@ -128,12 +137,12 @@ class PulseKeyframeProperties(PropertyGroup):
 
     bpm: FloatProperty(
         name="BPM", description="Beats per minute of your track",
-        default=120.0, min=1.0, max=999.0, precision=2,
+        default=120.0, min=1.0, max=999.0, precision=0,
     )
-    start_beat: IntProperty(
-        name="Start Beat",
-        description="Global beat number where bar 1 begins",
-        default=1, min=1,
+    frame_offset: IntProperty(
+        name="Frame Offset",
+        description="Offset all pulse keyframes by this many frames",
+        default=0, min=0, soft_max=99999, subtype='TIME',
     )
     bar_length: IntProperty(
         name="Bar Length",
@@ -272,6 +281,14 @@ class PulseKeyframeProperties(PropertyGroup):
         ),
         default=False,
     )
+    rand_per_channel: BoolProperty(
+        name="Unique Per Channel",
+        description=(
+            "Give each selected channel its own random variation. "
+            "Disable to apply the same random pattern to every channel."
+        ),
+        default=True,
+    )
 
 
 # ─── Shared logic ─────────────────────────────────────────────────────────────
@@ -288,7 +305,6 @@ def get_pulse_events(props, fps, rng=None):
     rng: optional random.Random instance for reproducible randomization.
     """
     active = get_active_beat_indices(props)
-    first  = props.start_beat - 1
     bpm    = props.bpm
     pv     = (props.peak_value * math.pi / 180.0
               if props.use_degrees else props.peak_value)
@@ -296,10 +312,10 @@ def get_pulse_events(props, fps, rng=None):
     pulse_index = 0
 
     for bar in range(props.num_bars):
-        bar_start = first + bar * props.bar_length
+        bar_start = bar * props.bar_length
         for beat_offset in active:
             global_beat = bar_start + beat_offset
-            peak_frame  = beat_to_frame(global_beat, bpm, fps)
+            peak_frame  = beat_to_frame(global_beat, bpm, fps) + props.frame_offset
 
             # ── Resolve peak value (with optional randomization) ──────────────
             if rng is not None and props.use_random:
@@ -350,8 +366,8 @@ def clear_fcurve_keyframes(fc):
         kps.remove(kps[i])
 
 
-def do_insert(fc, props, fps):
-    rng   = random.Random(props.rand_seed) if props.use_random else None
+def do_insert(fc, props, fps, seed=None):
+    rng   = random.Random(seed if seed is not None else props.rand_seed) if props.use_random else None
     total = 0
     for ev in get_pulse_events(props, fps, rng=rng):
         if props.additive:
@@ -411,12 +427,16 @@ class GRAPH_OT_insert_pulse_keyframes(Operator):
     poll           = classmethod(common_poll)
 
     def execute(self, context):
-        props = context.scene.pulse_keyframe_props
-        fc    = _get_active_fcurve(context)
-        if not common_validate(self, props, fc):
+        props   = context.scene.pulse_keyframe_props
+        curves  = _get_selected_fcurves(context)
+        if not common_validate(self, props, _get_active_fcurve(context)):
             return {'CANCELLED'}
-        total = do_insert(fc, props, scene_fps(context))
-        self.report({'INFO'}, f"Inserted {total} keyframes on '{_curve_label(fc)}'.")
+        fps     = scene_fps(context)
+        total   = 0
+        for i, fc in enumerate(curves):
+            seed = (props.rand_seed + i) if (props.use_random and props.rand_per_channel) else None
+            total += do_insert(fc, props, fps, seed=seed)
+        self.report({'INFO'}, f"Inserted {total} keyframes across {len(curves)} channel(s).")
         return {'FINISHED'}
 
 
@@ -432,54 +452,35 @@ class GRAPH_OT_overwrite_pulse_keyframes(Operator):
 
     def execute(self, context):
         props   = context.scene.pulse_keyframe_props
-        fc      = _get_active_fcurve(context)
-        if not common_validate(self, props, fc):
+        curves  = _get_selected_fcurves(context)
+        if not common_validate(self, props, _get_active_fcurve(context)):
             return {'CANCELLED'}
-        cleared = len(fc.keyframe_points)
-        clear_fcurve_keyframes(fc)
+        fps     = scene_fps(context)
+        cleared = 0
+        total   = 0
         if props.use_random:
             props.rand_seed = random.randint(0, 99999)
-        total   = do_insert(fc, props, scene_fps(context))
+        for i, fc in enumerate(curves):
+            cleared += len(fc.keyframe_points)
+            clear_fcurve_keyframes(fc)
+            seed = (props.rand_seed + i) if props.rand_per_channel else None
+            total += do_insert(fc, props, fps, seed=seed)
         self.report({'INFO'},
-            f"Cleared {cleared}, inserted {total} keyframes on '{_curve_label(fc)}'.")
+            f"Cleared {cleared}, inserted {total} keyframes across {len(curves)} channel(s).")
         return {'FINISHED'}
 
-
-class GRAPH_OT_pulse_pattern_fill(Operator):
-    bl_idname  = "graph.pulse_pattern_fill"
-    bl_label   = "Fill Beat Pattern"
-    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
-
-    mode: EnumProperty(
-        items=[
-            ('ALL_ON',  'All On',    ''),
-            ('ALL_OFF', 'All Off',   ''),
-            ('EVERY_2', 'Every 2nd', ''),
-            ('EVERY_4', 'Every 4th', ''),
-        ],
-        default='ALL_ON',
-    )
-
-    def execute(self, context):
-        props = context.scene.pulse_keyframe_props
-        n     = props.bar_length
-        pat   = list(props.beat_pattern)
-        for i in range(MAX_BAR_LENGTH):
-            if   self.mode == 'ALL_ON':  pat[i] = i < n
-            elif self.mode == 'ALL_OFF': pat[i] = False
-            elif self.mode == 'EVERY_2': pat[i] = (i < n) and (i % 2 == 0)
-            elif self.mode == 'EVERY_4': pat[i] = (i < n) and (i % 4 == 0)
-        props.beat_pattern = pat
-        return {'FINISHED'}
 
 
 # ─── Panel ────────────────────────────────────────────────────────────────────
 
 class GRAPH_PT_pulse_keyframes(Panel):
-    bl_label       = "Pulse Keyframes"
+    bl_label       = "OPSTYIX Pulse"
     bl_space_type  = 'GRAPH_EDITOR'
     bl_region_type = 'UI'
-    bl_category    = "Pulse"
+    bl_category    = "OPSTYIX"
+
+    def draw_header(self, context):
+        self.layout.label(icon_value=custom_icons["opstyix_icon"].icon_id)
 
     def draw(self, context):
         layout = self.layout
@@ -490,18 +491,6 @@ class GRAPH_PT_pulse_keyframes(Panel):
         fpb    = fps * 60.0 / bpm
         active = get_active_beat_indices(props)
 
-        # ── Target curve ──────────────────────────────────────────────────────
-        row = layout.row(align=True)
-        if fc is not None:
-            row.label(text=_curve_label(fc), icon='FCURVE')
-            sub = row.row()
-            sub.enabled = False
-            sub.label(text=f"[{fc.array_index}]")
-        else:
-            row.alert = True
-            row.label(text="No active F-Curve", icon='ERROR')
-
-        layout.separator(factor=0.5)
 
         # ── TEMPO ─────────────────────────────────────────────────────────────
         header, body = layout.panel("pulse_tempo", default_closed=False)
@@ -509,12 +498,11 @@ class GRAPH_PT_pulse_keyframes(Panel):
         if body:
             row = body.row(align=True)
             row.prop(props, "bpm")
-            row.prop(props, "start_beat")
+            row.prop(props, "frame_offset")
             info = body.row()
             info.enabled = False
             info.label(
-                text=f"1 beat = {fpb:.2f} fr  ·  "
-                     f"bar 1 beat 1 → frame {beat_to_frame(props.start_beat - 1, bpm, fps)}",
+                text=f"1 beat = {fpb:.2f} fr  ·  bar 1 beat 1 → frame {props.frame_offset}",
                 icon='INFO',
             )
 
@@ -536,12 +524,6 @@ class GRAPH_PT_pulse_keyframes(Panel):
             for i in range(n):
                 grid.prop(props, "beat_pattern", index=i,
                           text=str(i + 1), toggle=True)
-
-            row_fill = body.row(align=True)
-            row_fill.operator("graph.pulse_pattern_fill", text="All").mode   = 'ALL_ON'
-            row_fill.operator("graph.pulse_pattern_fill", text="None").mode  = 'ALL_OFF'
-            row_fill.operator("graph.pulse_pattern_fill", text="½").mode     = 'EVERY_2'
-            row_fill.operator("graph.pulse_pattern_fill", text="¼").mode     = 'EVERY_4'
 
             body.separator(factor=0.5)
             info = body.row()
@@ -666,35 +648,12 @@ class GRAPH_PT_pulse_keyframes(Panel):
             # Seed — reproducibility
             seed_box = body.box()
             seed_box.prop(props, "rand_seed")
+            seed_box.prop(props, "rand_per_channel", toggle=True,
+                          icon='RENDERLAYERS')
             sr = seed_box.row()
             sr.enabled = False
             sr.label(text="Auto-changes on Overwrite", icon='FILE_REFRESH')
 
-            # Sample preview
-            if props.rand_min <= props.rand_max:
-                preview_rng  = random.Random(props.rand_seed)
-                pv_base      = (props.peak_value * math.pi / 180.0
-                                if props.use_degrees else props.peak_value)
-                sample_count = min(4, len(active) * props.num_bars)
-                if sample_count > 0:
-                    body.separator(factor=0.4)
-                    pcol = body.column(align=True)
-                    pcol.scale_y = 0.85
-                    pcol.label(text="Sample peaks:", icon='PREVIEW_RANGE')
-                    for j in range(sample_count):
-                        r_val = preview_rng.uniform(props.rand_min, props.rand_max)
-                        if props.use_degrees:
-                            r_val = r_val * math.pi / 180.0
-                        sample = (pv_base + r_val if props.rand_mode == 'OFFSET'
-                                  else r_val)
-                        if props.rand_allow_negative:
-                            sign   = -1 if preview_rng.random() < 0.5 else 1
-                            sample = abs(sample) * sign
-                        display = math.degrees(sample) if props.use_degrees else sample
-                        unit    = "°" if props.use_degrees else ""
-                        pcol.label(text=f"  event {j + 1}: {display:.4g}{unit}")
-                    if len(active) * props.num_bars > sample_count:
-                        pcol.label(text="  …")
 
         # ── WARNINGS ──────────────────────────────────────────────────────────
         if not props.additive:
@@ -710,39 +669,6 @@ class GRAPH_PT_pulse_keyframes(Panel):
             row = layout.row()
             row.alert = True
             row.label(text="No beats active in pattern!", icon='ERROR')
-
-        # ── PREVIEW ───────────────────────────────────────────────────────────
-        header, body = layout.panel("pulse_preview", default_closed=True)
-        header.label(text="Preview", icon='PREVIEW_RANGE')
-        if body and active:
-            events        = get_pulse_events(props, fps)
-            preview_count = min(4, len(events))
-            col = body.column(align=True)
-            for ev in events[:preview_count]:
-                lv  = f"{ev['lead_value']:.3g}"
-                pv2 = f"{ev['peak_value']:.3g}"
-                ev2 = f"{ev['end_value']:.3g}"
-                if props.additive:
-                    col.label(text=f"bar {ev['bar']} b{ev['beat']}: f{ev['peak_frame']}:{pv2}")
-                elif props.lead_frames > 0 and props.event_frames > 0:
-                    col.label(
-                        text=f"bar {ev['bar']} b{ev['beat']}: "
-                             f"f{ev['lead_frame']}:{lv}  "
-                             f"f{ev['peak_frame']}:{pv2}  "
-                             f"f{ev['end_frame']}:{ev2}"
-                    )
-                elif props.lead_frames > 0:
-                    col.label(
-                        text=f"bar {ev['bar']} b{ev['beat']}: "
-                             f"f{ev['lead_frame']}:{lv}  f{ev['peak_frame']}:{pv2}"
-                    )
-                else:
-                    col.label(
-                        text=f"bar {ev['bar']} b{ev['beat']}: "
-                             f"f{ev['peak_frame']}:{pv2}  f{ev['end_frame']}:{ev2}"
-                    )
-            if len(events) > preview_count:
-                col.label(text=f"  … + {len(events) - preview_count} more")
 
         # ── EXECUTE ───────────────────────────────────────────────────────────
         layout.separator(factor=0.5)
@@ -762,17 +688,26 @@ class GRAPH_PT_pulse_keyframes(Panel):
         return col
 
 
+# ─── Global Variable ──────────────────────────────────────────────────────────
+custom_icons = None
+
 # ─── Registration ─────────────────────────────────────────────────────────────
 
 CLASSES = [
     PulseKeyframeProperties,
     GRAPH_OT_insert_pulse_keyframes,
     GRAPH_OT_overwrite_pulse_keyframes,
-    GRAPH_OT_pulse_pattern_fill,
     GRAPH_PT_pulse_keyframes,
 ]
 
 def register():
+    global custom_icons
+    custom_icons = bpy.utils.previews.new()
+    addon_path = os.path.dirname(__file__)
+    icons_dir = os.path.join(addon_path, "..", "icons")
+    custom_icons.load(
+        "opstyix_icon", os.path.join(icons_dir, "opstyix_icon.png"), "IMAGE"
+    )
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.pulse_keyframe_props = bpy.props.PointerProperty(
@@ -780,6 +715,8 @@ def register():
     )
 
 def unregister():
+    global custom_icons
+    bpy.utils.previews.remove(custom_icons)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.pulse_keyframe_props
