@@ -701,4 +701,4 @@ if __name__ == "__main__":
         pass
     register()
     print("\nPulse Keyframe Tool registered.")
-    print("Graph Editor → N-panel → 'Pulse' tab.\n")
+    print("Graph Editor → N-panel → 'OPSTYIX' tab.\n")

@@ -260,6 +260,10 @@ class OPSTYIX_PT_OctanePanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
 
+    @classmethod
+    def poll(cls, context):
+        return context.scene.render.engine == 'octane'
+
     def draw_header(self, context):
         self.layout.label(icon_value=custom_icons["opstyix_icon"].icon_id)
 
