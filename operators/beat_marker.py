@@ -434,11 +434,11 @@ class OPSTYIX_UL_Items(UIList):
 
 # * Main Addon Panel
 class OPSTYIX_PT_MainPanel(Panel):
+    bl_label = "OPSTYIX Toolkit"
+    bl_category = "OPSTYIX"
     bl_space_type = "PROPERTIES"
     bl_region_type = "WINDOW"
     bl_context = "scene"
-    bl_label = "OPSTYIX Toolkit"
-    bl_category = "OPSTYIX"
 
     def draw_header(self, context):
         self.layout.label(icon_value=custom_icons["opstyix_icon"].icon_id)

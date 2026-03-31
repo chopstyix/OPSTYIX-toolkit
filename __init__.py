@@ -12,14 +12,14 @@ from bpy.props import (
     CollectionProperty,
 )
 
-from .operators import beat_marker, octane_node_organizer, octane_scatter
+from .operators import beat_marker, octane_node_organizer, octane_scatter, kitbash3d, pulse
 
 bl_info = {
     "name": "OPSTYIX Toolkit",
     "description": "A collection of scripts that makes animating to music just a bit easier :)",
     "author": "OPSTYIX",
-    "version": (1, 1),
-    "blender": (4, 1, 0),
+    "version": (1, 3),
+    "blender": (4, 5, 0),
     "location": "View 3D",
     "warning": "", # used for warning icon and text in addons panel
     "wiki_url": "",
@@ -30,11 +30,15 @@ def register():
     beat_marker.register()
     octane_node_organizer.register()
     octane_scatter.register()
+    kitbash3d.register()
+    pulse.register()
 
 def unregister():      
     beat_marker.unregister()
     octane_node_organizer.unregister()
     octane_scatter.unregister()
+    kitbash3d.unregister()
+    pulse.unregister()
 
 if __name__ == "__main__":
     register()
