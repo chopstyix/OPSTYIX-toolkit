@@ -46,6 +46,7 @@ def frames_to_beats(frames, bpm, fps):
         return 0.0
     return frames / (fps * 60.0 / bpm)
 
+
 def _get_all_fcurves(action):
     if hasattr(action, "fcurves"):
         try:
@@ -103,26 +104,21 @@ EASING_AWARE = {'SINE', 'QUAD', 'CUBIC', 'QUART', 'QUINT',
                 'EXPO', 'CIRC', 'BACK', 'BOUNCE', 'ELASTIC'}
 
 INTERP_ITEMS = [
-    ('LINEAR',   'Linear',   'Constant rate of change'),
-    ('BEZIER',   'Bezier',   'Smooth with Bezier handles'),
-    ('CONSTANT', 'Constant', 'Instant step — no interpolation'),
-    ('SINE',     'Sine',     'Sinusoidal easing'),
-    ('QUAD',     'Quad',     'Quadratic easing'),
-    ('CUBIC',    'Cubic',    'Cubic easing'),
-    ('QUART',    'Quart',    'Quartic easing'),
-    ('QUINT',    'Quint',    'Quintic easing'),
-    ('EXPO',     'Expo',     'Exponential easing'),
-    ('CIRC',     'Circ',     'Circular easing'),
-    ('BACK',     'Back',     'Overshoot past the target'),
-    ('BOUNCE',   'Bounce',   'Bounce at the target'),
-    ('ELASTIC',  'Elastic',  'Elastic spring effect'),
+    ('LINEAR', 'Linear', 'Constant rate of change', 'IPO_LINEAR', 0),
+    ('SINE',   'Sine',   'Sinusoidal easing',        'IPO_SINE',   1),
+    ('QUAD',   'Quad',   'Quadratic easing',         'IPO_QUAD',   2),
+    ('CUBIC',  'Cubic',  'Cubic easing',             'IPO_CUBIC',  3),
+    ('QUART',  'Quart',  'Quartic easing',           'IPO_QUART',  4),
+    ('QUINT',  'Quint',  'Quintic easing',           'IPO_QUINT',  5),
+    ('EXPO',   'Expo',   'Exponential easing',       'IPO_EXPO',   6),
+    ('CIRC',   'Circ',   'Circular easing',          'IPO_CIRC',   7),
 ]
 
 EASING_ITEMS = [
-    ('AUTO',        'Auto',     'Automatic easing'),
-    ('EASE_IN',     'In',       'Accelerate into the keyframe'),
-    ('EASE_OUT',    'Out',      'Decelerate out of the keyframe'),
-    ('EASE_IN_OUT', 'In / Out', 'Accelerate in, decelerate out'),
+    ('AUTO',        'Auto',     'Automatic easing',              'IPO_EASE_IN_OUT', 0),
+    ('EASE_IN',     'In',       'Accelerate into the keyframe',  'IPO_EASE_IN',     1),
+    ('EASE_OUT',    'Out',      'Decelerate out of the keyframe','IPO_EASE_OUT',     2),
+    ('EASE_IN_OUT', 'In / Out', 'Accelerate in, decelerate out', 'IPO_EASE_IN_OUT', 3),
 ]
 
 def apply_kp(kp, interp, easing):
@@ -135,9 +131,9 @@ def apply_kp(kp, interp, easing):
 
 class PulseKeyframeProperties(PropertyGroup):
 
-    bpm: FloatProperty(
+    bpm: IntProperty(
         name="BPM", description="Beats per minute of your track",
-        default=120.0, min=1.0, max=999.0, precision=0,
+        default=120, min=1, max=999,
     )
     frame_offset: IntProperty(
         name="Frame Offset",
@@ -161,6 +157,12 @@ class PulseKeyframeProperties(PropertyGroup):
         default=4, min=1, soft_max=64,
     )
 
+    fill_gaps: BoolProperty(
+        name="Fill Gaps",
+        description="Insert a keyframe at base value (0 or Min) on unselected beats",
+        default=False,
+    )
+
     # ── Mode ──────────────────────────────────────────────────────────────────
     additive: BoolProperty(
         name="Additive",
@@ -180,6 +182,25 @@ class PulseKeyframeProperties(PropertyGroup):
             "Standard: the value the curve reaches at the peak of each pulse.\n"
             "Additive: the amount added to the accumulated base per event."
         ),
+        default=1.0,
+        soft_min=-10.0, soft_max=10.0,
+        precision=3,
+    )
+    use_peak_range: BoolProperty(
+        name="Use Range",
+        description="Clamp the inserted peak value between a minimum and maximum",
+        default=False,
+    )
+    peak_min: FloatProperty(
+        name="Min",
+        description="Minimum allowed peak value",
+        default=0.0,
+        soft_min=-10.0, soft_max=10.0,
+        precision=3,
+    )
+    peak_max: FloatProperty(
+        name="Max",
+        description="Maximum allowed peak value",
         default=1.0,
         soft_min=-10.0, soft_max=10.0,
         precision=3,
@@ -220,33 +241,11 @@ class PulseKeyframeProperties(PropertyGroup):
         description="Easing direction for the fade-out",
         items=EASING_ITEMS, default='EASE_OUT',
     )
-    use_degrees: BoolProperty(
-        name="Input in Degrees",
-        description=(
-            "Treat Peak Value as degrees and convert to radians before "
-            "inserting. Enable this when animating a rotation or any "
-            "property whose F-Curve stores values in radians."
-        ),
-        default=False,
-    )
-
     # ── Randomization ─────────────────────────────────────────────────────────
     use_random: BoolProperty(
         name="Randomize",
         description="Apply a random variation to the peak value of each event",
         default=False,
-    )
-    rand_mode: EnumProperty(
-        name="Mode",
-        description=(
-            "Offset: adds a random amount within [Min, Max] on top of Peak Value.\n"
-            "Replace: ignores Peak Value and picks a random value within [Min, Max]."
-        ),
-        items=[
-            ('OFFSET',  'Offset',  'Peak Value ± random amount within [Min, Max]'),
-            ('REPLACE', 'Replace', 'Peak value replaced by a random value within [Min, Max]'),
-        ],
-        default='OFFSET',
     )
     rand_min: FloatProperty(
         name="Min",
@@ -297,63 +296,81 @@ def get_active_beat_indices(props):
     return [i for i in range(props.bar_length) if props.beat_pattern[i]]
 
 
-def get_pulse_events(props, fps, rng=None):
+def get_pulse_events(props, fps, rng=None, is_angle=False, frame_offset=None):
     """
     Return a list of dicts, one per pulse event, containing:
       peak_frame, lead_frame, end_frame,
       lead_value, peak_value, end_value
     rng: optional random.Random instance for reproducible randomization.
+    is_angle: when True, peak_value and rand range are treated as degrees and
+              converted to radians before inserting.
     """
-    active = get_active_beat_indices(props)
-    bpm    = props.bpm
-    pv     = (props.peak_value * math.pi / 180.0
-              if props.use_degrees else props.peak_value)
-    events = []
+    active      = get_active_beat_indices(props)
+    active_set  = set(active)
+    bpm         = float(props.bpm)
+    pv          = (props.peak_value * math.pi / 180.0 if is_angle else props.peak_value)
+    events      = []
     pulse_index = 0
+
+    beat_range = range(props.bar_length) if props.fill_gaps else active
 
     for bar in range(props.num_bars):
         bar_start = bar * props.bar_length
-        for beat_offset in active:
+        for beat_offset in beat_range:
             global_beat = bar_start + beat_offset
-            peak_frame  = beat_to_frame(global_beat, bpm, fps) + props.frame_offset
+            offset      = frame_offset if frame_offset is not None else props.frame_offset
+            peak_frame  = beat_to_frame(global_beat, bpm, fps) + offset
 
-            # ── Resolve peak value (with optional randomization) ──────────────
+            # ── Resolve base value ────────────────────────────────────────────
+            if props.use_peak_range:
+                p_min    = (props.peak_min * math.pi / 180.0 if is_angle else props.peak_min)
+                p_max    = (props.peak_max * math.pi / 180.0 if is_angle else props.peak_max)
+                base_pv  = p_max
+                base_val = p_min
+            else:
+                base_pv  = pv
+                base_val = 0.0
+
+            if beat_offset not in active_set:
+                events.append({
+                    "peak_frame": peak_frame,
+                    "peak_value": base_val,
+                    "active":     False,
+                })
+                continue
+
             if rng is not None and props.use_random:
-                # Step 1: compute base value from mode
                 r_val = rng.uniform(props.rand_min, props.rand_max)
-                # rand_min/max are in degrees when use_degrees is on;
-                # convert to radians so r_val matches pv's unit
-                if props.use_degrees:
+                if is_angle:
                     r_val = r_val * math.pi / 180.0
-                if props.rand_mode == 'OFFSET':
-                    event_pv = pv + r_val
-                else:  # REPLACE — r_val IS the peak, already unit-correct
-                    event_pv = r_val
-                # Step 2: randomly flip sign (50/50) if allowed
+                event_pv = base_pv + r_val
                 if props.rand_allow_negative:
                     event_pv = abs(event_pv) * (-1 if rng.random() < 0.5 else 1)
+                if props.use_peak_range:
+                    event_pv = max(p_min, min(p_max, event_pv))
             else:
-                event_pv = pv
+                event_pv = base_pv
 
             if props.additive:
-                base        = pulse_index * pv   # base always uses unrandomised step
-                peak_val    = base + event_pv
-                lead_val    = base
-                end_val     = base
+                base     = pulse_index * pv
+                peak_val = base + event_pv
+                lead_val = base
+                end_val  = base
             else:
-                lead_val    = 0.0
-                peak_val    = event_pv
-                end_val     = 0.0
+                lead_val = base_val
+                peak_val = event_pv
+                end_val  = base_val
 
             events.append({
-                "peak_frame":  peak_frame,
-                "lead_frame":  peak_frame - props.lead_frames,
-                "end_frame":   peak_frame + props.event_frames,
-                "lead_value":  lead_val,
-                "peak_value":  peak_val,
-                "end_value":   end_val,
-                "bar":         bar + 1,
-                "beat":        beat_offset + 1,
+                "peak_frame": peak_frame,
+                "lead_frame": peak_frame - props.lead_frames,
+                "end_frame":  peak_frame + props.event_frames,
+                "lead_value": lead_val,
+                "peak_value": peak_val,
+                "end_value":  end_val,
+                "bar":        bar + 1,
+                "beat":       beat_offset + 1,
+                "active":     True,
             })
             pulse_index += 1
 
@@ -366,10 +383,21 @@ def clear_fcurve_keyframes(fc):
         kps.remove(kps[i])
 
 
-def do_insert(fc, props, fps, seed=None):
-    rng   = random.Random(seed if seed is not None else props.rand_seed) if props.use_random else None
-    total = 0
-    for ev in get_pulse_events(props, fps, rng=rng):
+def do_insert(fc, props, fps, seed=None, frame_offset=None):
+    rng           = random.Random(seed if seed is not None else props.rand_seed) if props.use_random else None
+    is_angle      = _fcurve_is_angle(fc)
+    total         = 0
+    last_frame    = None
+    events        = get_pulse_events(props, fps, rng=rng, is_angle=is_angle, frame_offset=frame_offset)
+    for ev in events:
+        last_frame = ev["peak_frame"]
+        if not ev.get("active", True):
+            kp = fc.keyframe_points.insert(
+                ev["peak_frame"], ev["peak_value"], options={'FAST'})
+            apply_kp(kp, props.fade_interp, props.fade_easing)
+            total += 1
+            continue
+
         if props.additive:
             # Additive: single peak keyframe only.
             # Lead interp/easing drives the curve shape into this keyframe.
@@ -394,6 +422,14 @@ def do_insert(fc, props, fps, seed=None):
                     ev["end_frame"], ev["end_value"], options={'FAST'})
                 apply_kp(kp, props.fade_interp, props.fade_easing)
                 total += 1
+
+    if last_frame is not None:
+        fpb        = fps * 60.0 / float(props.bpm)
+        base_val   = (props.peak_min if props.use_peak_range else 0.0)
+        extra_frame = round(last_frame + fpb)
+        kp = fc.keyframe_points.insert(extra_frame, base_val, options={'FAST'})
+        apply_kp(kp, props.fade_interp, props.fade_easing)
+        total += 1
 
     fc.keyframe_points.sort()
     fc.update()
@@ -427,15 +463,16 @@ class GRAPH_OT_insert_pulse_keyframes(Operator):
     poll           = classmethod(common_poll)
 
     def execute(self, context):
-        props   = context.scene.pulse_keyframe_props
-        curves  = _get_selected_fcurves(context)
+        props        = context.scene.pulse_keyframe_props
+        curves       = _get_selected_fcurves(context)
         if not common_validate(self, props, _get_active_fcurve(context)):
             return {'CANCELLED'}
-        fps     = scene_fps(context)
-        total   = 0
+        fps          = scene_fps(context)
+        frame_offset = context.scene.frame_current
+        total        = 0
         for i, fc in enumerate(curves):
             seed = (props.rand_seed + i) if (props.use_random and props.rand_per_channel) else None
-            total += do_insert(fc, props, fps, seed=seed)
+            total += do_insert(fc, props, fps, seed=seed, frame_offset=frame_offset)
         self.report({'INFO'}, f"Inserted {total} keyframes across {len(curves)} channel(s).")
         return {'FINISHED'}
 
@@ -446,9 +483,6 @@ class GRAPH_OT_overwrite_pulse_keyframes(Operator):
     bl_description = "Clear ALL existing keyframes then insert the pulse pattern fresh"
     bl_options     = {'REGISTER', 'UNDO'}
     poll           = classmethod(common_poll)
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
         props   = context.scene.pulse_keyframe_props
@@ -485,14 +519,13 @@ class GRAPH_PT_pulse_keyframes(Panel):
     def draw(self, context):
         layout = self.layout
         props  = context.scene.pulse_keyframe_props
-        fc     = _get_active_fcurve(context)
         fps    = scene_fps(context)
-        bpm    = props.bpm
+        bpm    = float(props.bpm)
         fpb    = fps * 60.0 / bpm
         active = get_active_beat_indices(props)
 
 
-        # ── TEMPO ─────────────────────────────────────────────────────────────
+        # ── TEMPO & PATTERN ───────────────────────────────────────────────────
         header, body = layout.panel("pulse_tempo", default_closed=False)
         header.label(text="Tempo", icon='TIME')
         if body:
@@ -502,22 +535,20 @@ class GRAPH_PT_pulse_keyframes(Panel):
             info = body.row()
             info.enabled = False
             info.label(
-                text=f"1 beat = {fpb:.2f} fr  ·  bar 1 beat 1 → frame {props.frame_offset}",
+                text=f"1 beat = {fpb:.2f} fr",
                 icon='INFO',
             )
 
-        # ── PATTERN ───────────────────────────────────────────────────────────
-        header, body = layout.panel("pulse_pattern", default_closed=False)
-        header.label(text="Pattern", icon='SEQ_SEQUENCER')
-        if body:
-            row = body.row(align=True)
+            body.separator(factor=0.5)
+
+            col = body.column(align=True)
+            row = col.row(align=True)
             row.prop(props, "bar_length")
             row.prop(props, "num_bars")
-            body.separator(factor=0.5)
 
             n    = props.bar_length
             cols = min(n, 8)
-            grid = body.grid_flow(
+            grid = col.grid_flow(
                 row_major=True, columns=cols,
                 even_columns=True, even_rows=True, align=True,
             )
@@ -525,53 +556,48 @@ class GRAPH_PT_pulse_keyframes(Panel):
                 grid.prop(props, "beat_pattern", index=i,
                           text=str(i + 1), toggle=True)
 
-            body.separator(factor=0.5)
-            info = body.row()
-            info.enabled = False
-            info.label(
-                text=f"{len(active)} beat(s) × {props.num_bars} bar(s) "
-                     f"= {len(active) * props.num_bars} pulse(s)"
-            )
+            col.prop(props, "fill_gaps")
 
         # ── PEAK ──────────────────────────────────────────────────────────────
         # Mode, peak value, and degrees — all about what value gets written
         header, body = layout.panel("pulse_peak", default_closed=False)
         header.label(text="Peak", icon='KEYFRAME_HLT')
         if body:
-            # Standard / Additive toggle
-            body.prop(props, "additive", toggle=True,
-                      text="Additive" if props.additive else "Standard",
-                      icon='PLUS' if props.additive else 'KEYFRAME')
+            col = body.column(align=True)
+            col.prop(props, "additive", toggle=True,
+                     text="Additive" if props.additive else "Standard",
+                     icon='PLUS' if props.additive else 'KEYFRAME')
 
+            row = col.row(align=True)
             if props.additive:
-                hint = body.row()
-                hint.enabled = False
-                pv = props.peak_value
-                hint.label(
-                    text=f"0→{pv:.3g}  {pv:.3g}→{pv*2:.3g}  {pv*2:.3g}→{pv*3:.3g} …",
-                    icon='INFO',
-                )
+                row.prop(props, "peak_value", text="Step")
+            else:
+                row.prop(props, "use_peak_range", text="Range", toggle=True)
+                sub = row.row(align=True)
+                sub.enabled = props.use_peak_range
+                sub.prop(props, "peak_min", text="Min")
+                if props.use_peak_range:
+                    row.prop(props, "peak_max", text="Max")
+                else:
+                    row.prop(props, "peak_value", text="Max")
 
-            body.separator(factor=0.5)
+            col.separator()
 
-            # Peak value + degrees toggle inline on the same row
-            peak_row = body.row(align=True)
-            peak_row.prop(props, "peak_value",
-                          text="Step" if props.additive else "Peak")
-            peak_row.prop(props, "use_degrees", text="°", toggle=True,
-                          icon='DRIVER_ROTATIONAL_DIFFERENCE')
-
-            if props.use_degrees:
-                conv = body.row()
-                conv.enabled = False
-                conv.label(
-                    text=f"{props.peak_value:.4g}° = {props.peak_value * math.pi / 180.0:.6f} rad",
-                    icon='INFO',
-                )
-            elif fc is not None and _fcurve_is_angle(fc):
-                warn = body.row()
-                warn.alert = True
-                warn.label(text="Rotation curve detected — enable °?", icon='ERROR')
+            # ── Randomize ─────────────────────────────────────────────────────
+            rand_row = col.row(align=True)
+            rand_row.prop(props, "use_random", text="Randomize", toggle=True,
+                          icon='FORCE_TURBULENCE')
+            if props.use_random:
+                rrow = col.row(align=True)
+                rrow.prop(props, "rand_min", text="Min")
+                rrow.prop(props, "rand_max", text="Max")
+                if props.rand_min > props.rand_max:
+                    w = col.row()
+                    w.alert = True
+                    w.label(text="Min must be ≤ Max!", icon='ERROR')
+                col.prop(props, "rand_seed")
+                col.prop(props, "rand_per_channel")
+                col.prop(props, "rand_allow_negative")
 
         # ── ENVELOPE ─────────────────────────────────────────────────────────
         # In standard mode: Lead and Fade each show their duration AND
@@ -579,80 +605,37 @@ class GRAPH_PT_pulse_keyframes(Panel):
         # In additive mode: only the single peak keyframe curve is shown.
         header, body = layout.panel("pulse_envelope", default_closed=False)
         header.label(
-            text="Curve" if props.additive else "Envelope",
+            text="Curve" if props.additive else "Interpolation",
             icon='SMOOTHCURVE' if props.additive else 'IPO_EASE_IN_OUT',
         )
         if body:
+            col = body.column(align=True)
             if props.additive:
-                # Single curve setting for the staircase peak keyframes
-                body.prop(props, "lead_interp", text="")
-                erow = body.row(align=True)
-                erow.prop(props, "lead_easing", expand=True)
-                erow.enabled = props.lead_interp in EASING_AWARE
+                col.prop(props, "lead_interp", text="")
+                col.prop(props, "lead_easing", text="")
             else:
-                # Lead row: duration left, interp+easing right
-                body.label(text="Lead  (0 → peak)", icon='TRIA_UP')
-                row = body.row(align=True)
-                self._dur_col(row, props, "lead_frames",
-                              props.lead_frames, bpm, fps)
-                row.separator(factor=1.5)
-                rc = row.column(align=True)
-                rc.prop(props, "lead_interp", text="")
-                er = rc.row(align=True)
-                er.prop(props, "lead_easing", expand=True)
-                er.enabled = props.lead_interp in EASING_AWARE
+                col.label(text="Lead", icon='TRIA_UP')
+                row = col.row(align=True)
+                row.prop(props, "lead_frames", text="Frames")
+                row.prop(props, "lead_interp", text="")
+                hint = col.row(align=True)
+                sub = hint.row()
+                sub.enabled = False
+                sub.label(text=f"{frames_to_beats(props.lead_frames, bpm, fps):.3f} b")
+                hint.prop(props, "lead_easing", text="")
 
-                body.separator(factor=1.0)
+                col.separator()
 
-                # Fade row: duration left, interp+easing right
-                body.label(text="Fade  (peak → 0)", icon='TRIA_DOWN')
-                row2 = body.row(align=True)
-                self._dur_col(row2, props, "event_frames",
-                              props.event_frames, bpm, fps)
-                row2.separator(factor=1.5)
-                rc2 = row2.column(align=True)
-                rc2.prop(props, "fade_interp", text="")
-                er2 = rc2.row(align=True)
-                er2.prop(props, "fade_easing", expand=True)
-                er2.enabled = props.fade_interp in EASING_AWARE
+                col.label(text="Fade", icon='TRIA_DOWN')
+                row2 = col.row(align=True)
+                row2.prop(props, "event_frames", text="Frames")
+                row2.prop(props, "fade_interp", text="")
+                hint2 = col.row(align=True)
+                sub2 = hint2.row()
+                sub2.enabled = False
+                sub2.label(text=f"{frames_to_beats(props.event_frames, bpm, fps):.3f} b")
+                hint2.prop(props, "fade_easing", text="")
 
-        # ── RANDOMIZE ─────────────────────────────────────────────────────────
-        header, body = layout.panel("pulse_random", default_closed=True)
-        header.prop(props, "use_random", text="")
-        header.label(text="Randomize", icon='FORCE_TURBULENCE')
-        if body and props.use_random:
-
-            # Mode: how the random value is applied
-            body.prop(props, "rand_mode", expand=True)
-            body.separator(factor=0.5)
-
-            # Range + sign — all about what values get generated
-            range_box = body.box()
-            range_box.label(text="Range:", icon='ARROW_LEFTRIGHT')
-            rrow = range_box.row(align=True)
-            rrow.prop(props, "rand_min", text="Min")
-            rrow.prop(props, "rand_max", text="Max")
-            if props.rand_min > props.rand_max:
-                w = range_box.row()
-                w.alert = True
-                w.label(text="Min must be ≤ Max!", icon='ERROR')
-            range_box.prop(props, "rand_allow_negative", toggle=True,
-                           icon='ARROW_LEFTRIGHT')
-            if props.use_degrees:
-                dh = range_box.row()
-                dh.enabled = False
-                dh.label(text="Range values treated as degrees", icon='INFO')
-
-            body.separator(factor=0.5)
-
-            # Seed — reproducibility
-            seed_box = body.box()
-            seed_box.prop(props, "rand_seed")
-            seed_box.prop(props, "rand_per_channel", toggle=True,
-                          icon='RENDERLAYERS')
-            sr = seed_box.row()
-            sr.enabled = False
-            sr.label(text="Auto-changes on Overwrite", icon='FILE_REFRESH')
 
 
         # ── WARNINGS ──────────────────────────────────────────────────────────
@@ -676,16 +659,6 @@ class GRAPH_PT_pulse_keyframes(Panel):
         row.scale_y = 1.4
         row.operator("graph.insert_pulse_keyframes",    text="Insert",    icon='KEYFRAME_HLT')
         row.operator("graph.overwrite_pulse_keyframes", text="Overwrite", icon='FILE_REFRESH')
-
-    @staticmethod
-    def _dur_col(row, props, attr, frame_val, bpm, fps):
-        """Duration field stacked above its beat-equivalent label."""
-        col = row.column(align=True)
-        col.prop(props, attr, text="fr")
-        sub = col.row()
-        sub.enabled = False
-        sub.label(text=f"{frames_to_beats(frame_val, bpm, fps):.3f} b")
-        return col
 
 
 # ─── Global Variable ──────────────────────────────────────────────────────────
