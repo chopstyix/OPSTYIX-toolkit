@@ -213,7 +213,7 @@ class PulseKeyframeProperties(PropertyGroup):
             "Additive: frames for the fall back to the accumulated base "
             "after the peak (set to 0 to skip the fall entirely)."
         ),
-        default=12, min=0, soft_max=500, subtype='TIME',
+        default=0, min=0, soft_max=500, subtype='TIME',
     )
 
     # ── Curves ────────────────────────────────────────────────────────────────
@@ -301,12 +301,13 @@ def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=Non
     is_angle: when True, peak_value and rand range are treated as degrees and
               converted to radians before inserting.
     """
-    active      = get_active_beat_indices(props)
-    active_set  = set(active)
-    bpm         = float(bpm)
-    pv          = (props.peak_value * math.pi / 180.0 if is_angle else props.peak_value)
-    events      = []
-    pulse_index = 0
+    active           = get_active_beat_indices(props)
+    active_set       = set(active)
+    bpm              = float(bpm)
+    pv               = (props.peak_value * math.pi / 180.0 if is_angle else props.peak_value)
+    events           = []
+    pulse_index      = 0
+    last_active_peak = 0.0
 
     beat_range = range(props.bar_length) if props.fill_gaps else active
 
@@ -328,9 +329,10 @@ def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=Non
                 base_val = 0.0
 
             if beat_offset not in active_set:
+                fill_val = last_active_peak if props.additive else base_val
                 events.append({
                     "peak_frame": peak_frame,
-                    "peak_value": base_val,
+                    "peak_value": fill_val,
                     "active":     False,
                 })
                 continue
@@ -348,10 +350,10 @@ def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=Non
                 event_pv = base_pv
 
             if props.additive:
-                base     = pulse_index * pv
-                peak_val = base + event_pv
-                lead_val = base
-                end_val  = base
+                peak_val         = pulse_index * pv
+                lead_val         = peak_val
+                end_val          = peak_val
+                last_active_peak = peak_val
             else:
                 lead_val = base_val
                 peak_val = event_pv
@@ -380,11 +382,12 @@ def clear_fcurve_keyframes(fc):
 
 
 def do_insert(fc, props, fps, bpm, seed=None, frame_offset=None):
-    rng           = random.Random(seed if seed is not None else props.rand_seed) if props.use_random else None
-    is_angle      = _fcurve_is_angle(fc)
-    total         = 0
-    last_frame    = None
-    events        = get_pulse_events(props, fps, bpm, rng=rng, is_angle=is_angle, frame_offset=frame_offset)
+    rng             = random.Random(seed if seed is not None else props.rand_seed) if props.use_random else None
+    is_angle        = _fcurve_is_angle(fc)
+    total           = 0
+    last_frame      = None
+    last_peak_value = None
+    events          = get_pulse_events(props, fps, bpm, rng=rng, is_angle=is_angle, frame_offset=frame_offset)
     for ev in events:
         last_frame = ev["peak_frame"]
         if not ev.get("active", True):
@@ -395,8 +398,7 @@ def do_insert(fc, props, fps, bpm, seed=None, frame_offset=None):
             continue
 
         if props.additive:
-            # Additive: single peak keyframe only.
-            # Lead interp/easing drives the curve shape into this keyframe.
+            last_peak_value = ev["peak_value"]
             kp = fc.keyframe_points.insert(
                 ev["peak_frame"], ev["peak_value"], options={'FAST'})
             apply_kp(kp, props.lead_interp, props.lead_easing)
@@ -420,10 +422,13 @@ def do_insert(fc, props, fps, bpm, seed=None, frame_offset=None):
                 total += 1
 
     if last_frame is not None:
-        fpb        = fps * 60.0 / float(bpm)
-        base_val   = (props.peak_min if props.use_peak_range else 0.0)
+        fpb         = fps * 60.0 / float(bpm)
         extra_frame = round(last_frame + fpb)
-        kp = fc.keyframe_points.insert(extra_frame, base_val, options={'FAST'})
+        if props.additive and last_peak_value is not None:
+            trail_val = last_peak_value
+        else:
+            trail_val = (props.peak_min if props.use_peak_range else 0.0)
+        kp = fc.keyframe_points.insert(extra_frame, trail_val, options={'FAST'})
         apply_kp(kp, props.fade_interp, props.fade_easing)
         total += 1
 
@@ -586,10 +591,11 @@ class GRAPH_PT_pulse_keyframes(Panel):
             rand_row = col.row(align=True)
             rand_row.prop(props, "use_random", text="Randomize", toggle=True,
                           icon='FORCE_TURBULENCE')
+            rrow = col.row(align=True)
+            rrow.enabled = props.use_random
+            rrow.prop(props, "rand_min", text="Min")
+            rrow.prop(props, "rand_max", text="Max")
             if props.use_random:
-                rrow = col.row(align=True)
-                rrow.prop(props, "rand_min", text="Min")
-                rrow.prop(props, "rand_max", text="Max")
                 if props.rand_min > props.rand_max:
                     w = col.row()
                     w.alert = True
@@ -603,10 +609,7 @@ class GRAPH_PT_pulse_keyframes(Panel):
         # curve shape side-by-side so related controls stay together.
         # In additive mode: only the single peak keyframe curve is shown.
         header, body = layout.panel("pulse_envelope", default_closed=False)
-        header.label(
-            text="Curve" if props.additive else "Interpolation",
-            icon='SMOOTHCURVE' if props.additive else 'IPO_EASE_IN_OUT',
-        )
+        header.label(text="Interpolation", icon='IPO_EASE_IN_OUT')
         if body:
             col = body.column(align=True)
             if props.additive:
