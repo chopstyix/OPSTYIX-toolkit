@@ -1,4 +1,3 @@
-# * FILE IMPORT
 import os
 import bpy
 import bpy.utils.previews
@@ -9,9 +8,6 @@ from bpy.props import (
     StringProperty,
     BoolProperty,
     IntProperty,
-    # FloatProperty,
-    # FloatVectorProperty,
-    # EnumProperty,
     PointerProperty,
     CollectionProperty,
 )
@@ -19,22 +15,20 @@ from bpy.props import (
 from bpy.types import (
     Operator,
     Panel,
-    # Menu,
-    # AddonPreferences,
     PropertyGroup,
     UIList,
 )
 
 
+# ─── Property Groups ──────────────────────────────────────────────────────────
 
-# * STORE PROPERTIES (Self Descriptive)
 class MarkerProp(PropertyGroup):
     input_bpm: IntProperty(
         name="BPM Value",
         description="Value used to create beat markers",
         default=128,
         min=1,
-        max=200,
+        max=999,
     )
 
     input_measure: IntProperty(
@@ -64,6 +58,7 @@ class MarkerProp(PropertyGroup):
         description="When enabled, creates animation bookmarks when creating beat markers",
         default=False,
     )
+
 
 class BookmarkProp(PropertyGroup):
     id: IntProperty(
@@ -102,7 +97,9 @@ class BookmarkProp(PropertyGroup):
         max=99999,
     )
 
-# * OPERATORS (Executable Functions)
+
+# ─── Operators ────────────────────────────────────────────────────────────────
+
 class OPSTYIX_OT_Actions(Operator):
     bl_idname = "opstyix.list_action"
     bl_label = "Organize Shot List"
@@ -123,7 +120,6 @@ class OPSTYIX_OT_Actions(Operator):
     def invoke(self, context, event):
         scene = context.scene
         idx = scene.selected_index
-        # userinput = scene.OPSTYIX_MarkerProperties
 
         try:
             item = scene.OPSTYIX_AnimationBookmark[idx]
@@ -131,11 +127,9 @@ class OPSTYIX_OT_Actions(Operator):
             pass
         else:
             if self.action == "DOWN" and idx < len(scene.OPSTYIX_AnimationBookmark) - 1:
-                # item_next = scene.OPSTYIX_AnimationBookmark[idx + 1].name
                 scene.OPSTYIX_AnimationBookmark.move(idx, idx + 1)
                 scene.selected_index += 1
             elif self.action == "UP" and idx >= 1:
-                # item_prev = scene.OPSTYIX_AnimationBookmark[idx - 1].name
                 scene.OPSTYIX_AnimationBookmark.move(idx, idx - 1)
                 scene.selected_index -= 1
             elif self.action == "REMOVE":
@@ -152,16 +146,15 @@ class OPSTYIX_OT_Actions(Operator):
                     i.bookmark_select = True
 
         if self.action == "ADD":
-            if scene.use_preview_range == False:
-                frame_start = scene.frame_start
-                frame_end = scene.frame_end
-            else:
+            if scene.use_preview_range:
                 frame_start = scene.frame_preview_start
                 frame_end = scene.frame_preview_end
+            else:
+                frame_start = scene.frame_start
+                frame_end = scene.frame_end
             obj_id = len(scene.OPSTYIX_AnimationBookmark)
             selected_index = len(scene.OPSTYIX_AnimationBookmark)
 
-            # Create item data
             item = scene.OPSTYIX_AnimationBookmark.add()
             item.bookmark_select = False
             item.name = "New Shot"
@@ -172,27 +165,6 @@ class OPSTYIX_OT_Actions(Operator):
 
         return {"FINISHED"}
 
-class OPSTYIX_OT_BookmarkSelectAll(Operator):
-    bl_idname = "opstyix.bookmark_select_all"
-    bl_label = "Select all bookmarks"
-    bl_description = "Selects all bookmarks within the list"
-
-    def execute(self, context):
-        for i in context.scene.OPSTYIX_AnimationBookmark:
-            i.bookmark_select = True
-
-        return {"FINISHED"}
-
-class OPSTYIX_OT_BookmarkDeselectAll(Operator):
-    bl_idname = "opstyix.bookmark_deselect_all"
-    bl_label = "Deselect all bookmarks"
-    bl_description = "Deselects all bookmarks within the list"
-
-    def execute(self, context):
-        for i in context.scene.OPSTYIX_AnimationBookmark:
-            i.bookmark_select = False
-
-        return {"FINISHED"}
 
 class OPSTYIX_OT_DrawMarkers(Operator):
     #! Operator only works on main scene frame ranges, if user has preview range enabled no visible changes are made which can result in confusion.
@@ -203,54 +175,32 @@ class OPSTYIX_OT_DrawMarkers(Operator):
     bl_description = "Initialize beat marker creation"
 
     def execute(self, context):
-        scene = bpy.context.scene
-        input_bpm = scene.OPSTYIX_MarkerProperties.input_bpm
-        input_measure = scene.OPSTYIX_MarkerProperties.input_measure
-        input_modify_end_frame = scene.OPSTYIX_MarkerProperties.enable_update_end_frame
-        input_frame_offset = scene.OPSTYIX_MarkerProperties.input_frame_offset
-        current_frame = scene.frame_current
+        scene = context.scene
+        props = scene.OPSTYIX_MarkerProperties
+        input_bpm = props.input_bpm
+        input_measure = props.input_measure
+        input_frame_offset = props.input_frame_offset
 
-        # print the values to the console
-        print("Current Frame is: ", current_frame)
-        print("BPM: ", input_bpm)
-        print("Modify End Frame: ", input_modify_end_frame)
-        print("Frame Offset:", input_frame_offset)
-
-        # Calculate Frame per Beat
-        render = bpy.context.scene.render
+        render = scene.render
         scene_fps = render.fps / render.fps_base
-
         fpb = scene_fps * 60 / input_bpm
 
-        print("Frames per beat is: ", fpb)
-
-        # Begin Main Code
         beat_total = input_measure * 4
         bar_iter = 0
-        frame_input = input_frame_offset
+        scene.timeline_markers.new("[1]", frame=input_frame_offset)
+
         beat_input = 1
-        scene.timeline_markers.new("[1]", frame=frame_input)
-        print("Placing beat marker on frame", frame_input)
-
         while beat_input <= beat_total:
-            # print("New Measure")
             bar_iter += 1
-            bar_start = frame_input
-            frame_input = round(beat_input * fpb) + input_frame_offset
-            scene.timeline_markers.new("[2]", frame=frame_input)
-            beat_input += 1
-            frame_input = round(beat_input * fpb) + input_frame_offset
-            scene.timeline_markers.new("[3]", frame=frame_input)
-            beat_input += 1
-            frame_input = round(beat_input * fpb) + input_frame_offset
-            scene.timeline_markers.new("[4]", frame=frame_input)
-            beat_input += 1
-            frame_input = round(beat_input * fpb) + input_frame_offset
+            bar_start = round((beat_input - 1) * fpb) + input_frame_offset
+            for _ in range(4):
+                frame_input = round(beat_input * fpb) + input_frame_offset
+                label = f"[{(beat_input % 4) + 1}]"
+                scene.timeline_markers.new(label, frame=frame_input)
+                beat_input += 1
             bar_end = frame_input - 1
-            scene.timeline_markers.new("[1]", frame=frame_input)
-            beat_input += 1
 
-            if scene.OPSTYIX_MarkerProperties.enable_auto_bookmark == True:
+            if props.enable_auto_bookmark:
                 item = scene.OPSTYIX_AnimationBookmark.add()
                 item.bookmark_select = False
                 item.name = "Bar " + str(bar_iter)
@@ -266,9 +216,8 @@ class OPSTYIX_OT_DrawMarkers(Operator):
         scene.tool_settings.lock_markers = True
         area.type = old_type
 
-        if input_modify_end_frame == True:
+        if props.enable_update_end_frame:
             new_frame_end = round(fpb * input_measure * 4) - 1
-            print("End frame will be: ", new_frame_end)
             scene.frame_start = 1
             scene.frame_end = new_frame_end
 
@@ -282,10 +231,7 @@ class OPSTYIX_OT_DeleteMarkers(Operator):
     bl_description = "Initialize the deletion of all markers within the scene"
 
     def execute(self, context):
-        scene = context.scene
-        print("Clearing all markers from scene...")
-        scene.timeline_markers.clear()
-
+        context.scene.timeline_markers.clear()
         return {"FINISHED"}
 
 
@@ -294,13 +240,11 @@ class OPSTYIX_OT_ClearBookmarks(Operator):
     bl_label = "Clear Animation Bookmarks"
     bl_description = "Clears animation bookmarks"
 
-    # If nothing is found in the UIList, the button is disabled
     @classmethod
     def poll(cls, context):
         return bool(context.scene.OPSTYIX_AnimationBookmark)
 
     def execute(self, context):
-        print("Clearing animation bookmarks...")
         context.scene.OPSTYIX_AnimationBookmark.clear()
         self.report({"INFO"}, "Cleared bookmark list")
         return {"FINISHED"}
@@ -311,7 +255,6 @@ class OPSTYIX_OT_SetFrameRangeActive(Operator):
     bl_label = "Set Frame Range"
     bl_description = "Set the scenes frame range based on highlighted bookmark"
 
-    # If nothing is found in the UIList, the button is disabled
     @classmethod
     def poll(cls, context):
         return context.scene.OPSTYIX_AnimationBookmark
@@ -319,35 +262,17 @@ class OPSTYIX_OT_SetFrameRangeActive(Operator):
     def execute(self, context):
         scene = context.scene
         selected_index = scene.selected_index
-        print("Selected index from UIList:", selected_index)
-
-        # frame_padding = scene.OPSTYIX_MarkerProperties.input_frame_offset
-        frame_padding = 0
-        print("frame_padding: ", frame_padding)
-
-        # Check to see if there are any selected bookmarks
-        # for i in scene.OPSTYIX_AnimationBookmark:
-        #     if i.bookmark_select == True:
-        #         active_flag = True
-
-        # if active_flag == False:
-        #     self.report({"INFO"}, "Action aborted, no bookmarks are selected")
-        #     return {"CANCELLED"}        
-        
         set_start_frame = scene.OPSTYIX_AnimationBookmark[selected_index].frame_start
         set_end_frame = scene.OPSTYIX_AnimationBookmark[selected_index].frame_end
 
-        if scene.use_preview_range == True:
-            info = "Set Preview Range from frames %d to %d" % (
-                set_start_frame,
-                set_end_frame,
-            )
-            scene.frame_preview_start = set_start_frame + frame_padding
-            scene.frame_preview_end = set_end_frame + frame_padding
+        if scene.use_preview_range:
+            info = "Set Preview Range from frames %d to %d" % (set_start_frame, set_end_frame)
+            scene.frame_preview_start = set_start_frame
+            scene.frame_preview_end = set_end_frame
         else:
             info = "Set Range from frames %d to %d" % (set_start_frame, set_end_frame)
-            scene.frame_start = set_start_frame + frame_padding
-            scene.frame_end = set_end_frame + frame_padding
+            scene.frame_start = set_start_frame
+            scene.frame_end = set_end_frame
 
         self.report({"INFO"}, info)
         return {"FINISHED"}
@@ -358,62 +283,50 @@ class OPSTYIX_OT_SetFrameRangeSelected(Operator):
     bl_label = "Set Frame Range from Selected Bookmarks"
     bl_description = "Sets the scenes frame range based off selected bookmark(s)"
 
-    # If nothing is found in the UIList, the button is disabled
     @classmethod
     def poll(cls, context):
         return bool(context.scene.OPSTYIX_AnimationBookmark)
 
     def execute(self, context):
         scene = context.scene
-        selected_index = scene.selected_index
-        print("Selected index from UIList:", selected_index)
-        select_check = False
         lowest_frame = 9999999999
         highest_frame = 1
+        select_check = False
 
-        # Go through UIList 'OPSTYIX_AnimationBookmark' and find if 'bookmark_select' is True.
         for i in scene.OPSTYIX_AnimationBookmark:
-            if i.bookmark_select == True:
+            if i.bookmark_select:
                 select_check = True
-                # Find lowest 'frame_start' value
                 if i.frame_start < lowest_frame:
                     lowest_frame = i.frame_start
-                # Find highest 'frame_end' value
                 if i.frame_end > highest_frame:
                     highest_frame = i.frame_end
 
-        if select_check == False:
+        if not select_check:
             self.report({"INFO"}, "Action cancelled, no selected bookmarks")
             return {"CANCELLED"}
 
-        frame_padding = bpy.data.scenes["Scene"].OPSTYIX_MarkerProperties.input_frame_offset
-        set_start_frame = lowest_frame
-        set_end_frame = highest_frame
+        frame_padding = scene.OPSTYIX_MarkerProperties.input_frame_offset
 
-        if scene.use_preview_range == True:
-            info = "Set Preview Range from frames %d to %d" % (
-                set_start_frame,
-                set_end_frame,
-            )
-            scene.frame_preview_start = set_start_frame - frame_padding
-            scene.frame_preview_end = set_end_frame + frame_padding
+        if scene.use_preview_range:
+            info = "Set Preview Range from frames %d to %d" % (lowest_frame, highest_frame)
+            scene.frame_preview_start = lowest_frame - frame_padding
+            scene.frame_preview_end = highest_frame + frame_padding
         else:
-            info = "Set Range from frames %d to %d" % (set_start_frame, set_end_frame)
-            scene.frame_start = set_start_frame - frame_padding
-            scene.frame_end = set_end_frame + frame_padding
+            info = "Set Range from frames %d to %d" % (lowest_frame, highest_frame)
+            scene.frame_start = lowest_frame - frame_padding
+            scene.frame_end = highest_frame + frame_padding
 
         self.report({"INFO"}, info)
         return {"FINISHED"}
 
 
-# * DRAW PANELS
-# This controls the output text inside the UIList
+# ─── UI List ──────────────────────────────────────────────────────────────────
+
 class OPSTYIX_UL_Items(UIList):
     def draw_item(
         self, context, layout, data, item, icon, active_data, active_propname, index
     ):
         checkbox = "CHECKBOX_HLT" if item.bookmark_select else "CHECKBOX_DEHLT"
-        # row.prop(item, "active", text="", emboss=False, icon=checkbox)
         row = layout.row(align=False, heading="", heading_ctxt="", translate=True)
         row.prop(
             item,
@@ -433,7 +346,8 @@ class OPSTYIX_UL_Items(UIList):
         pass
 
 
-# * Main Addon Panel
+# ─── Panels ───────────────────────────────────────────────────────────────────
+
 class OPSTYIX_PT_MainPanel(Panel):
     bl_label = "OPSTYIX Toolkit"
     bl_category = "OPSTYIX"
@@ -447,7 +361,6 @@ class OPSTYIX_PT_MainPanel(Panel):
     def draw(self, context):
         scene = context.scene
         layout = self.layout
-        global custom_icons
         layout.use_property_split = True
         layout.use_property_decorate = False
         my_tool = scene.OPSTYIX_MarkerProperties
@@ -481,7 +394,7 @@ class OPSTYIX_PT_AnimationBookmark(Panel):
         layout.use_property_split = True
         layout.use_property_decorate = False
 
-        scene = bpy.context.scene
+        scene = context.scene
 
         row = layout.row()
         row.template_list(
@@ -494,7 +407,6 @@ class OPSTYIX_PT_AnimationBookmark(Panel):
             rows=9,
         )
 
-        # Align settings to the right of the UIList
         col = row.column(align=True)
         col.operator("opstyix.list_action", icon="ADD", text="").action = "ADD"
         col.operator("opstyix.list_action", icon="REMOVE", text="").action = "REMOVE"
@@ -502,25 +414,22 @@ class OPSTYIX_PT_AnimationBookmark(Panel):
         col.operator("opstyix.list_action", icon="TRIA_UP", text="").action = "UP"
         col.operator("opstyix.list_action", icon="TRIA_DOWN", text="").action = "DOWN"
         col.separator()
-        # col.operator("opstyix.list_action", icon="CHECKBOX_DEHLT", text="").action = "DESELECT_ALL"
-        col.operator("opstyix.bookmark_deselect_all", text="", icon="CHECKBOX_DEHLT")        
-        # col.operator("opstyix.list_action", icon="CHECKBOX_HLT", text="").action = "SELECT_ALL"
-        col.operator("opstyix.bookmark_select_all", text="", icon="CHECKBOX_HLT")
+        col.operator("opstyix.list_action", icon="CHECKBOX_DEHLT", text="").action = "DESELECT_ALL"
+        col.operator("opstyix.list_action", icon="CHECKBOX_HLT", text="").action = "SELECT_ALL"
         col.separator()
-        col.operator("opstyix.set_frame_range_active", text="", icon="RESTRICT_SELECT_OFF")        
-        col.operator("opstyix.set_frame_range_selected", text="", icon="DRIVER_DISTANCE")        
+        col.operator("opstyix.set_frame_range_active", text="", icon="RESTRICT_SELECT_OFF")
+        col.operator("opstyix.set_frame_range_selected", text="", icon="DRIVER_DISTANCE")
         col.separator()
         col.operator("opstyix.clear_bookmarks", text="", icon="TRASH")
-        # col.prop(scene, "use_preview_range", text="", toggle=True)
 
 
-# * Global Variable
+# ─── Global Variable ──────────────────────────────────────────────────────────
 custom_icons = None
 
-# * Define all the classes
+# ─── Registration ─────────────────────────────────────────────────────────────
 classes = [
     MarkerProp,
-    BookmarkProp,    
+    BookmarkProp,
     OPSTYIX_PT_MainPanel,
     OPSTYIX_PT_AnimationBookmark,
     OPSTYIX_UL_Items,
@@ -530,13 +439,9 @@ classes = [
     OPSTYIX_OT_SetFrameRangeActive,
     OPSTYIX_OT_SetFrameRangeSelected,
     OPSTYIX_OT_Actions,
-    OPSTYIX_OT_BookmarkSelectAll,
-    OPSTYIX_OT_BookmarkDeselectAll,
 ]
 
 
-# * REGISTER
-# * Add all classes below, it will automatically register and unregister
 def register():
     global custom_icons
     custom_icons = bpy.utils.previews.new()
@@ -549,7 +454,6 @@ def register():
     for cls in classes:
         register_class(cls)
 
-    # Custom Properties
     bpy.types.Scene.OPSTYIX_MarkerProperties = PointerProperty(type=MarkerProp)
     bpy.types.Scene.OPSTYIX_AnimationBookmark = CollectionProperty(type=BookmarkProp)
     bpy.types.Scene.selected_index = IntProperty()
@@ -565,5 +469,4 @@ def unregister():
     del bpy.types.Scene.OPSTYIX_MarkerProperties
 
 
-# *  RUN ON LOAD
 print("beat_marker.py loaded")

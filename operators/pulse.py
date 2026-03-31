@@ -131,10 +131,6 @@ def apply_kp(kp, interp, easing):
 
 class PulseKeyframeProperties(PropertyGroup):
 
-    bpm: IntProperty(
-        name="BPM", description="Beats per minute of your track",
-        default=120, min=1, max=999,
-    )
     frame_offset: IntProperty(
         name="Frame Offset",
         description="Offset all pulse keyframes by this many frames",
@@ -296,7 +292,7 @@ def get_active_beat_indices(props):
     return [i for i in range(props.bar_length) if props.beat_pattern[i]]
 
 
-def get_pulse_events(props, fps, rng=None, is_angle=False, frame_offset=None):
+def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=None):
     """
     Return a list of dicts, one per pulse event, containing:
       peak_frame, lead_frame, end_frame,
@@ -307,7 +303,7 @@ def get_pulse_events(props, fps, rng=None, is_angle=False, frame_offset=None):
     """
     active      = get_active_beat_indices(props)
     active_set  = set(active)
-    bpm         = float(props.bpm)
+    bpm         = float(bpm)
     pv          = (props.peak_value * math.pi / 180.0 if is_angle else props.peak_value)
     events      = []
     pulse_index = 0
@@ -383,12 +379,12 @@ def clear_fcurve_keyframes(fc):
         kps.remove(kps[i])
 
 
-def do_insert(fc, props, fps, seed=None, frame_offset=None):
+def do_insert(fc, props, fps, bpm, seed=None, frame_offset=None):
     rng           = random.Random(seed if seed is not None else props.rand_seed) if props.use_random else None
     is_angle      = _fcurve_is_angle(fc)
     total         = 0
     last_frame    = None
-    events        = get_pulse_events(props, fps, rng=rng, is_angle=is_angle, frame_offset=frame_offset)
+    events        = get_pulse_events(props, fps, bpm, rng=rng, is_angle=is_angle, frame_offset=frame_offset)
     for ev in events:
         last_frame = ev["peak_frame"]
         if not ev.get("active", True):
@@ -424,7 +420,7 @@ def do_insert(fc, props, fps, seed=None, frame_offset=None):
                 total += 1
 
     if last_frame is not None:
-        fpb        = fps * 60.0 / float(props.bpm)
+        fpb        = fps * 60.0 / float(bpm)
         base_val   = (props.peak_min if props.use_peak_range else 0.0)
         extra_frame = round(last_frame + fpb)
         kp = fc.keyframe_points.insert(extra_frame, base_val, options={'FAST'})
@@ -468,11 +464,12 @@ class GRAPH_OT_insert_pulse_keyframes(Operator):
         if not common_validate(self, props, _get_active_fcurve(context)):
             return {'CANCELLED'}
         fps          = scene_fps(context)
+        bpm          = context.scene.OPSTYIX_MarkerProperties.input_bpm
         frame_offset = context.scene.frame_current
         total        = 0
         for i, fc in enumerate(curves):
             seed = (props.rand_seed + i) if (props.use_random and props.rand_per_channel) else None
-            total += do_insert(fc, props, fps, seed=seed, frame_offset=frame_offset)
+            total += do_insert(fc, props, fps, bpm, seed=seed, frame_offset=frame_offset)
         self.report({'INFO'}, f"Inserted {total} keyframes across {len(curves)} channel(s).")
         return {'FINISHED'}
 
@@ -490,6 +487,7 @@ class GRAPH_OT_overwrite_pulse_keyframes(Operator):
         if not common_validate(self, props, _get_active_fcurve(context)):
             return {'CANCELLED'}
         fps     = scene_fps(context)
+        bpm     = context.scene.OPSTYIX_MarkerProperties.input_bpm
         cleared = 0
         total   = 0
         if props.use_random:
@@ -498,7 +496,7 @@ class GRAPH_OT_overwrite_pulse_keyframes(Operator):
             cleared += len(fc.keyframe_points)
             clear_fcurve_keyframes(fc)
             seed = (props.rand_seed + i) if props.rand_per_channel else None
-            total += do_insert(fc, props, fps, seed=seed)
+            total += do_insert(fc, props, fps, bpm, seed=seed)
         self.report({'INFO'},
             f"Cleared {cleared}, inserted {total} keyframes across {len(curves)} channel(s).")
         return {'FINISHED'}
@@ -517,12 +515,13 @@ class GRAPH_PT_pulse_keyframes(Panel):
         self.layout.label(icon_value=custom_icons["opstyix_icon"].icon_id)
 
     def draw(self, context):
-        layout = self.layout
-        props  = context.scene.pulse_keyframe_props
-        fps    = scene_fps(context)
-        bpm    = float(props.bpm)
-        fpb    = fps * 60.0 / bpm
-        active = get_active_beat_indices(props)
+        layout      = self.layout
+        props       = context.scene.pulse_keyframe_props
+        marker_props = context.scene.OPSTYIX_MarkerProperties
+        fps         = scene_fps(context)
+        bpm         = float(marker_props.input_bpm)
+        fpb         = fps * 60.0 / bpm
+        active      = get_active_beat_indices(props)
 
 
         # ── TEMPO & PATTERN ───────────────────────────────────────────────────
@@ -530,7 +529,7 @@ class GRAPH_PT_pulse_keyframes(Panel):
         header.label(text="Tempo", icon='TIME')
         if body:
             row = body.row(align=True)
-            row.prop(props, "bpm")
+            row.prop(marker_props, "input_bpm", text="BPM")
             row.prop(props, "frame_offset")
             info = body.row()
             info.enabled = False
