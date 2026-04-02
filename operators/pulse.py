@@ -133,6 +133,11 @@ def apply_kp(kp, interp, easing):
 
 class PulseKeyframeProperties(PropertyGroup):
 
+    bpm: IntProperty(
+        name="BPM",
+        description="Tempo in beats per minute (used when the Beat Marker module is disabled)",
+        default=128, min=1, max=999,
+    )
     frame_offset: IntProperty(
         name="Frame Offset",
         description="Offset all pulse keyframes by this many frames",
@@ -343,6 +348,16 @@ class PulseKeyframeProperties(PropertyGroup):
         default=0,
         min=0, max=99999,
     )
+
+
+# ─── BPM helper ───────────────────────────────────────────────────────────────
+
+def get_bpm(context):
+    """Return BPM from Beat Marker if available, otherwise fall back to Pulse's own property."""
+    marker_props = getattr(context.scene, "OPSTYIX_MarkerProperties", None)
+    if marker_props is not None:
+        return marker_props.input_bpm
+    return context.scene.pulse_keyframe_props.bpm
 
 
 # ─── Snap guard ───────────────────────────────────────────────────────────────
@@ -572,7 +587,7 @@ class GRAPH_OT_insert_pulse_keyframes(Operator):
             return {'CANCELLED'}
         mult         = int(props.beat_multiplier)
         fps          = scene_fps(context)
-        bpm          = context.scene.OPSTYIX_MarkerProperties.input_bpm * mult
+        bpm          = get_bpm(context) * mult
         frame_offset = context.scene.frame_current
         num_bars     = props.num_bars * mult if mult > 1 else None
         total        = 0
@@ -599,7 +614,7 @@ class GRAPH_OT_overwrite_pulse_keyframes(Operator):
             return {'CANCELLED'}
         mult     = int(props.beat_multiplier)
         fps      = scene_fps(context)
-        bpm      = context.scene.OPSTYIX_MarkerProperties.input_bpm * mult
+        bpm      = get_bpm(context) * mult
         num_bars = props.num_bars * mult if mult > 1 else None
         cleared  = 0
         total    = 0
@@ -630,13 +645,13 @@ class GRAPH_PT_pulse_keyframes(Panel):
         self.layout.label(icon_value=custom_icons["opstyix_icon"].icon_id)
 
     def draw(self, context):
-        layout      = self.layout
-        props       = context.scene.pulse_keyframe_props
-        marker_props = context.scene.OPSTYIX_MarkerProperties
-        fps         = scene_fps(context)
-        bpm         = float(marker_props.input_bpm)
-        fpb         = fps * 60.0 / bpm
-        active      = get_active_beat_indices(props)
+        layout       = self.layout
+        props        = context.scene.pulse_keyframe_props
+        marker_props = getattr(context.scene, "OPSTYIX_MarkerProperties", None)
+        fps          = scene_fps(context)
+        bpm          = float(get_bpm(context))
+        fpb          = fps * 60.0 / bpm
+        active       = get_active_beat_indices(props)
 
 
         # ── TEMPO & PATTERN ───────────────────────────────────────────────────
@@ -644,7 +659,10 @@ class GRAPH_PT_pulse_keyframes(Panel):
         header.label(text="Tempo", icon='TIME')
         if body:
             row = body.row(align=True)
-            row.prop(marker_props, "input_bpm", text="BPM")
+            if marker_props is not None:
+                row.prop(marker_props, "input_bpm", text="BPM")
+            else:
+                row.prop(props, "bpm", text="BPM")
             row.prop(props, "frame_offset")
             info = body.row()
             info.enabled = False
@@ -796,8 +814,7 @@ class GRAPH_PT_pulse_keyframes(Panel):
             row = body.row(align=True)
             row.scale_y = 1.4
             row.prop(props, "beat_multiplier", text="")
-            row.operator("graph.overwrite_pulse_keyframes", text="Apply",  icon='FILE_REFRESH')
-            row.operator("graph.insert_pulse_keyframes",   text="Insert", icon='KEYFRAME_HLT')
+            row.operator("graph.overwrite_pulse_keyframes", text="Apply", icon='FILE_REFRESH')
 
 
 # ─── Global Variable ──────────────────────────────────────────────────────────
