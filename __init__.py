@@ -3,7 +3,7 @@ import bpy
 from bpy.types import AddonPreferences
 from bpy.props import BoolProperty
 
-from .operators import beat_marker, octane_node_organizer, octane_scatter, pulse
+from .operators import beat_marker, octane_node_organizer, octane_scatter, octane_solo, pulse
 
 bl_info = {
     "name": "OPSTYIX Toolkit",
@@ -22,6 +22,7 @@ _MODULE_MAP = {
     "enable_pulse":                 pulse,
     "enable_octane_node_organizer": octane_node_organizer,
     "enable_octane_scatter":        octane_scatter,
+    "enable_octane_solo":           octane_solo,
 }
 
 
@@ -46,6 +47,9 @@ def _update_octane_node_organizer(self, context):
 
 def _update_octane_scatter(self, context):
     _set_module(octane_scatter, self.enable_octane_scatter)
+
+def _update_octane_solo(self, context):
+    _set_module(octane_solo, self.enable_octane_solo)
 
 
 class OPSTYIXPreferences(AddonPreferences):
@@ -75,6 +79,12 @@ class OPSTYIXPreferences(AddonPreferences):
         default=True,
         update=_update_octane_scatter,
     )
+    enable_octane_solo: BoolProperty(
+        name="Octane Solo Tool",
+        description="Enable the Octane Solo Tool module",
+        default=True,
+        update=_update_octane_solo,
+    )
 
     def draw(self, context):
         layout = self.layout
@@ -87,6 +97,7 @@ class OPSTYIXPreferences(AddonPreferences):
             ("Octane Specific Tools", [
                 ("enable_octane_node_organizer", "Organizes Octane material node trees (Coming Soon)"),
                 ("enable_octane_scatter",        "Builds Octane Scatter on Surface node graphs"),
+                ("enable_octane_solo",           "Solos an Octane texture node for isolated preview"),
             ]),
         ]
 
@@ -115,6 +126,8 @@ def register():
         octane_node_organizer.register()
     if prefs.enable_octane_scatter:
         octane_scatter.register()
+    if prefs.enable_octane_solo:
+        octane_solo.register()
 
 
 def unregister():
