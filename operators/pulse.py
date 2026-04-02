@@ -25,6 +25,7 @@ import bpy
 import bpy.utils.previews
 import math
 import random
+from contextlib import contextmanager
 from bpy.types import Operator, Panel, PropertyGroup
 from bpy.props import (IntProperty, FloatProperty,
                         EnumProperty, BoolVectorProperty, BoolProperty)
@@ -38,8 +39,9 @@ def scene_fps(context):
     r = context.scene.render
     return r.fps / r.fps_base
 
-def beat_to_frame(beat_index_0, bpm, fps):
-    return round(beat_index_0 * fps * 60.0 / bpm)
+def beat_to_frame(beat_index_0, bpm, fps, snap=True):
+    val = beat_index_0 * fps * 60.0 / bpm
+    return round(val) if snap else val
 
 def frames_to_beats(frames, bpm, fps):
     if bpm <= 0 or fps <= 0:
@@ -289,6 +291,32 @@ class PulseKeyframeProperties(PropertyGroup):
         ),
         default=True,
     )
+    # ── Frequency ─────────────────────────────────────────────────────────────
+    beat_multiplier: EnumProperty(
+        name="Frequency",
+        description="Beat frequency multiplier — 1x fires once per beat, 2x every half-beat, etc.",
+        items=[
+            ('1', '1x', 'One pulse per beat'),
+            ('2', '2x', 'Two pulses per beat (doubles)'),
+            ('3', '3x', 'Three pulses per beat (triples)'),
+            ('4', '4x', 'Four pulses per beat'),
+            ('5', '5x', 'Five pulses per beat'),
+            ('6', '6x', 'Six pulses per beat'),
+            ('7', '7x', 'Seven pulses per beat'),
+            ('8', '8x', 'Eight pulses per beat'),
+        ],
+        default='1',
+    )
+    # ── Snapping ──────────────────────────────────────────────────────────────
+    snap_keyframes: BoolProperty(
+        name="Snap to Frames",
+        description=(
+            "When enabled, keyframe positions are rounded to the nearest integer frame.\n"
+            "When disabled, positions are exact floating-point values — useful when the "
+            "beat grid does not divide evenly into whole frames."
+        ),
+        default=True,
+    )
     # ── Beat Randomization ────────────────────────────────────────────────────
     rand_beats: BoolProperty(
         name="Randomize Beats",
@@ -317,13 +345,30 @@ class PulseKeyframeProperties(PropertyGroup):
     )
 
 
+# ─── Snap guard ───────────────────────────────────────────────────────────────
+
+@contextmanager
+def _snap_guard(context, props):
+    """Temporarily disable animation snapping if props.snap_keyframes is False."""
+    ts       = context.scene.tool_settings
+    original = ts.use_snap_anim
+    if not props.snap_keyframes:
+        ts.use_snap_anim = False
+    try:
+        yield
+    finally:
+        if not props.snap_keyframes:
+            ts.use_snap_anim = original
+
+
 # ─── Shared logic ─────────────────────────────────────────────────────────────
 
 def get_active_beat_indices(props):
     return [i for i in range(props.bar_length) if props.beat_pattern[i]]
 
 
-def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=None):
+def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=None,
+                     num_bars_override=None):
     """
     Return a list of dicts, one per pulse event, containing:
       peak_frame, lead_frame, end_frame,
@@ -331,6 +376,7 @@ def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=Non
     rng: optional random.Random instance for reproducible randomization.
     is_angle: when True, peak_value and rand range are treated as degrees and
               converted to radians before inserting.
+    num_bars_override: if set, overrides props.num_bars (used for doubles mode).
     """
     active           = get_active_beat_indices(props)
     bpm              = float(bpm)
@@ -339,7 +385,8 @@ def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=Non
     pulse_index      = 0
     last_active_peak = 0.0
 
-    for bar in range(props.num_bars):
+    num_bars = num_bars_override if num_bars_override is not None else props.num_bars
+    for bar in range(num_bars):
         bar_start = bar * props.bar_length
 
         # Determine which beats are active this bar
@@ -358,7 +405,7 @@ def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=Non
         for beat_offset in beat_range:
             global_beat = bar_start + beat_offset
             offset      = frame_offset if frame_offset is not None else props.frame_offset
-            peak_frame  = beat_to_frame(global_beat, bpm, fps) + offset
+            peak_frame  = beat_to_frame(global_beat, bpm, fps, snap=props.snap_keyframes) + offset
 
             # ── Resolve base value ────────────────────────────────────────────
             if props.use_peak_range:
@@ -423,13 +470,15 @@ def clear_fcurve_keyframes(fc):
         kps.remove(kps[i])
 
 
-def do_insert(fc, props, fps, bpm, seed=None, frame_offset=None):
+def do_insert(fc, props, fps, bpm, seed=None, frame_offset=None, num_bars_override=None):
     rng             = random.Random(seed if seed is not None else props.rand_seed) if props.use_random else None
     is_angle        = _fcurve_is_angle(fc)
     total           = 0
     last_frame      = None
     last_peak_value = None
-    events          = get_pulse_events(props, fps, bpm, rng=rng, is_angle=is_angle, frame_offset=frame_offset)
+    events          = get_pulse_events(props, fps, bpm, rng=rng, is_angle=is_angle,
+                                       frame_offset=frame_offset,
+                                       num_bars_override=num_bars_override)
     for ev in events:
         last_frame = ev["peak_frame"]
         if not ev.get("active", True):
@@ -476,7 +525,7 @@ def do_insert(fc, props, fps, bpm, seed=None, frame_offset=None):
 
     if last_frame is not None:
         fpb         = fps * 60.0 / float(bpm)
-        extra_frame = round(last_frame + fpb)
+        extra_frame = round(last_frame + fpb) if props.snap_keyframes else (last_frame + fpb)
         if props.additive and last_peak_value is not None:
             trail_val = last_peak_value
         else:
@@ -521,46 +570,52 @@ class GRAPH_OT_insert_pulse_keyframes(Operator):
         curves       = _get_selected_fcurves(context)
         if not common_validate(self, props, _get_active_fcurve(context)):
             return {'CANCELLED'}
+        mult         = int(props.beat_multiplier)
         fps          = scene_fps(context)
-        bpm          = context.scene.OPSTYIX_MarkerProperties.input_bpm
+        bpm          = context.scene.OPSTYIX_MarkerProperties.input_bpm * mult
         frame_offset = context.scene.frame_current
+        num_bars     = props.num_bars * mult if mult > 1 else None
         total        = 0
-        for i, fc in enumerate(curves):
-            seed = (props.rand_seed + i) if (props.use_random and props.rand_per_channel) else None
-            total += do_insert(fc, props, fps, bpm, seed=seed, frame_offset=frame_offset)
+        with _snap_guard(context, props):
+            for i, fc in enumerate(curves):
+                seed = (props.rand_seed + i) if (props.use_random and props.rand_per_channel) else None
+                total += do_insert(fc, props, fps, bpm, seed=seed,
+                                   frame_offset=frame_offset, num_bars_override=num_bars)
         self.report({'INFO'}, f"Inserted {total} keyframes across {len(curves)} channel(s).")
         return {'FINISHED'}
 
 
 class GRAPH_OT_overwrite_pulse_keyframes(Operator):
     bl_idname      = "graph.overwrite_pulse_keyframes"
-    bl_label       = "Overwrite"
+    bl_label       = "Apply"
     bl_description = "Clear ALL existing keyframes then insert the pulse pattern fresh"
     bl_options     = {'REGISTER', 'UNDO'}
     poll           = classmethod(common_poll)
 
     def execute(self, context):
-        props   = context.scene.pulse_keyframe_props
-        curves  = _get_selected_fcurves(context)
+        props    = context.scene.pulse_keyframe_props
+        curves   = _get_selected_fcurves(context)
         if not common_validate(self, props, _get_active_fcurve(context)):
             return {'CANCELLED'}
-        fps     = scene_fps(context)
-        bpm     = context.scene.OPSTYIX_MarkerProperties.input_bpm
-        cleared = 0
-        total   = 0
+        mult     = int(props.beat_multiplier)
+        fps      = scene_fps(context)
+        bpm      = context.scene.OPSTYIX_MarkerProperties.input_bpm * mult
+        num_bars = props.num_bars * mult if mult > 1 else None
+        cleared  = 0
+        total    = 0
         if props.use_random:
             props.rand_seed = random.randint(0, 99999)
         if props.rand_beats:
             props.beat_rand_seed = random.randint(0, 99999)
-        for i, fc in enumerate(curves):
-            cleared += len(fc.keyframe_points)
-            clear_fcurve_keyframes(fc)
-            seed = (props.rand_seed + i) if props.rand_per_channel else None
-            total += do_insert(fc, props, fps, bpm, seed=seed)
+        with _snap_guard(context, props):
+            for i, fc in enumerate(curves):
+                cleared += len(fc.keyframe_points)
+                clear_fcurve_keyframes(fc)
+                seed = (props.rand_seed + i) if props.rand_per_channel else None
+                total += do_insert(fc, props, fps, bpm, seed=seed, num_bars_override=num_bars)
         self.report({'INFO'},
             f"Cleared {cleared}, inserted {total} keyframes across {len(curves)} channel(s).")
         return {'FINISHED'}
-
 
 
 # ─── Panel ────────────────────────────────────────────────────────────────────
@@ -734,11 +789,15 @@ class GRAPH_PT_pulse_keyframes(Panel):
             row.label(text="No beats active in pattern!", icon='ERROR')
 
         # ── EXECUTE ───────────────────────────────────────────────────────────
-        layout.separator(factor=0.5)
-        row = layout.row(align=True)
-        row.scale_y = 1.4
-        row.operator("graph.overwrite_pulse_keyframes", text="Apply",  icon='FILE_REFRESH')
-        row.operator("graph.insert_pulse_keyframes",   text="Insert", icon='KEYFRAME_HLT')
+        header, body = layout.panel("pulse_execute", default_closed=False)
+        header.label(text="Execute", icon='PLAY')
+        if body:
+            body.prop(props, "snap_keyframes")
+            row = body.row(align=True)
+            row.scale_y = 1.4
+            row.prop(props, "beat_multiplier", text="")
+            row.operator("graph.overwrite_pulse_keyframes", text="Apply",  icon='FILE_REFRESH')
+            row.operator("graph.insert_pulse_keyframes",   text="Insert", icon='KEYFRAME_HLT')
 
 
 # ─── Global Variable ──────────────────────────────────────────────────────────
