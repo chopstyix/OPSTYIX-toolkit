@@ -349,7 +349,7 @@ class OPSTYIX_UL_Items(UIList):
 # ─── Panels ───────────────────────────────────────────────────────────────────
 
 class OPSTYIX_PT_MainPanel(Panel):
-    bl_label = "OPSTYIX Toolkit"
+    bl_label = "OPSTYIX Beat Marker"
     bl_category = "OPSTYIX"
     bl_space_type = "PROPERTIES"
     bl_region_type = "WINDOW"

@@ -2,7 +2,7 @@ import os
 import bpy
 from bpy.utils import register_class, unregister_class
 
-from bpy.types import Operator, Panel, Menu, AddonPreferences, PropertyGroup, UIList
+from bpy.types import Operator, Panel, PropertyGroup, UIList
 
 from bpy.props import (
     StringProperty,
@@ -12,8 +12,9 @@ from bpy.props import (
     # FloatVectorProperty,
     # EnumProperty,
     PointerProperty,
-    CollectionProperty,
+
 )
+
 
 
 class OctScatterProp(PropertyGroup):
@@ -24,6 +25,127 @@ class OctScatterProp(PropertyGroup):
         min=0,
         max=999999,
     )
+    picking_scatter: BoolProperty(
+        name="Picking Scatter Objects",
+        default=False,
+    )
+    surface_object: PointerProperty(
+        name="Surface Object",
+        type=bpy.types.Object,
+    )
+    scatter_collection_name: StringProperty(
+        name="Collection Name",
+        description="Name for the new collection that will hold the scatter objects",
+        default="Scatter",
+    )
+    use_existing_collection: BoolProperty(
+        name="Use Existing Collection",
+        description="Reference an existing collection instead of creating a new one",
+        default=False,
+    )
+    existing_collection: PointerProperty(
+        name="Existing Collection",
+        type=bpy.types.Collection,
+    )
+
+
+class OPSTYIX_OT_BeginScatterPick(Operator):
+    bl_idname = "opstyix.begin_scatter_pick"
+    bl_label = "Select Scatter Objects"
+    bl_description = "Store this object as the surface and select up to 4 scatter objects"
+
+    def execute(self, context):
+        props = context.scene.OPSTYIX_OctScatterProperties
+        props.surface_object = context.active_object
+        props.picking_scatter = True
+        return {"FINISHED"}
+
+
+class OPSTYIX_OT_ConfirmScatterPick(Operator):
+    bl_idname = "opstyix.confirm_scatter_pick"
+    bl_label = "Confirm Selection"
+    bl_description = "Move the selected objects into a new collection"
+
+    def execute(self, context):
+        props = context.scene.OPSTYIX_OctScatterProperties
+        surface = props.surface_object
+
+        if props.use_existing_collection and props.existing_collection:
+            collection = props.existing_collection
+            col_name = collection.name
+            scatter_objects = list(collection.all_objects)[:4]
+            if not scatter_objects:
+                self.report({"WARNING"}, "Existing collection has no objects.")
+                return {"CANCELLED"}
+        else:
+            scatter_objects = [o for o in context.selected_objects if o != surface][:4]
+            if not scatter_objects:
+                self.report({"WARNING"}, "No objects selected.")
+                return {"CANCELLED"}
+            base_name = props.scatter_collection_name or "Scatter"
+            prefixed_name = "#OS_" + base_name
+            collection = bpy.data.collections.get(prefixed_name)
+            if collection is None:
+                collection = bpy.data.collections.new(prefixed_name)
+                context.scene.collection.children.link(collection)
+            col_name = prefixed_name
+
+            for obj in scatter_objects:
+                for col in list(obj.users_collection):
+                    col.objects.unlink(obj)
+                collection.objects.link(obj)
+
+        for obj in scatter_objects:
+            if obj.type == 'MESH' and hasattr(obj.data, 'octane'):
+                obj.data.octane.primitive_coordinate_mode = 'Octane'
+
+        context.scene.OPSTYIX_active_collection = collection
+        props.picking_scatter = False
+
+        if surface:
+            surface.name = col_name
+            bpy.ops.object.select_all(action='DESELECT')
+            surface.select_set(True)
+            context.view_layer.objects.active = surface
+            context.view_layer.update()
+
+        bpy.ops.opstyix.octane_create_scatter_mat()
+
+        try:
+            bpy.ops.opstyix.octane_scatter()
+        except RuntimeError as e:
+            self.report({'WARNING'}, f"Scatter setup skipped: {e}")
+
+        self.report({"INFO"}, f"Moved {len(scatter_objects)} object(s) into '{col_name}'.")
+        return {"FINISHED"}
+
+
+class OPSTYIX_OT_SetScatterSurface(Operator):
+    bl_idname = "opstyix.set_scatter_surface"
+    bl_label = "Set Scatter Surface"
+    bl_description = "Set this object as the active scatter surface"
+
+    object_name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        obj = bpy.data.objects.get(self.object_name)
+        if obj is None:
+            self.report({'WARNING'}, f"Object '{self.object_name}' not found.")
+            return {'CANCELLED'}
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+        return {'FINISHED'}
+
+
+class OPSTYIX_OT_CancelScatterPick(Operator):
+    bl_idname = "opstyix.cancel_scatter_pick"
+    bl_label = "Cancel"
+    bl_description = "Cancel scatter object selection"
+
+    def execute(self, context):
+        context.scene.OPSTYIX_OctScatterProperties.picking_scatter = False
+        return {"FINISHED"}
 
 
 class OPSTYIX_OT_get_nodes(Operator):
@@ -52,7 +174,7 @@ class OPSTYIX_OT_oct_create_scatter_mat(Operator):
         #* Check if object contains a material.
         # if active_obj.active_material != None:
         #     active_obj.active_material = None
-        scatter_mat = bpy.data.materials.new(name="TESTING")
+        scatter_mat = bpy.data.materials.new(name=active_obj.name)
         scatter_mat.use_nodes = True
         if active_obj.data.materials:
             active_obj.data.materials[0] = scatter_mat
@@ -150,7 +272,7 @@ class OPSTYIX_OT_oct_scatter_on_surface_setup(Operator):
         output_node = node_tree.nodes["Material Output"]
         scatter_node = node_tree.nodes.new('OctaneScatterOnSurface')
         scatter_node.location = [(output_node.location.x - 250), output_node.location.y]
-        node_tree.links.new(scatter_node.outputs[0], output_node.inputs["Surface"]) 
+        node_tree.links.new(scatter_node.outputs[0], output_node.inputs["Displacement"])
         node = 3
         for x in range(5):
             # node = 3
@@ -269,117 +391,105 @@ class OPSTYIX_PT_OctanePanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        
+        props = context.scene.OPSTYIX_OctScatterProperties
+
+        # ── Picking mode ──────────────────────────────────────────────────────
+        if props.picking_scatter:
+            surface = props.surface_object
+            scatter_candidates = [o for o in context.selected_objects if o != surface][:4]
+
+            box = layout.box()
+            col = box.column(align=True)
+
+            row = col.row()
+            row.enabled = False
+            row.label(text=f"Surface:  {surface.name if surface else '—'}", icon='OBJECT_DATA')
+
+            col.separator(factor=0.5)
+            col.prop(props, "use_existing_collection", text="Use Existing Collection", toggle=True)
+            col.separator(factor=0.5)
+
+            if props.use_existing_collection:
+                col.prop(props, "existing_collection", text="Collection")
+                existing_count = len(props.existing_collection.all_objects) if props.existing_collection else 0
+                hint = col.row()
+                hint.enabled = False
+                hint.label(text=f"{existing_count} object(s) in collection.", icon='INFO')
+                can_confirm = bool(props.existing_collection and existing_count > 0)
+            else:
+                col.prop(props, "scatter_collection_name", text="Scatter Group")
+                col.separator(factor=0.5)
+                hint = col.row()
+                hint.enabled = False
+                hint.label(text="Select up to 4 objects to scatter on the surface.", icon='INFO')
+                col.separator(factor=0.5)
+                col.label(text=f"Selected:  {len(scatter_candidates)} / 4 object(s)", icon='OUTLINER_OB_MESH')
+                can_confirm = 1 <= len(scatter_candidates) <= 4
+
+            col.separator(factor=0.5)
+            row = col.row(align=True)
+            row.enabled = can_confirm
+            row.operator("opstyix.confirm_scatter_pick", text="Confirm", icon='CHECKMARK')
+            row.operator("opstyix.cancel_scatter_pick", text="Cancel", icon='X')
+            return
+
+        # ── No object selected ────────────────────────────────────────────────
+        obj = context.active_object
+        if obj is None:
+            layout.label(text="Select a surface object to begin.", icon='INFO')
+            return
+
+        if obj.type != 'MESH':
+            layout.label(text="Selected object is not a mesh.", icon='INFO')
+            return
+
+        mat = obj.material_slots[0].material if obj.material_slots else None
+
+        # ── No material: offer to pick scatter assets directly ────────────────
+        if mat is None:
+            layout.label(text="Ready to set up scatter. Select scatter assets to begin.", icon='INFO')
+            layout.operator("opstyix.begin_scatter_pick",
+                            text="Select Scatter Assets", icon='RESTRICT_SELECT_OFF')
+            return
+
+        # ── Has material but not an #OS_ scatter material ─────────────────────
+        if not mat.name.startswith("#OS_"):
+            layout.label(text="Material is not an Octane Scatter material.", icon='INFO')
+            return
+
+        # ── Valid #OS_ scatter material ───────────────────────────────────────
         try:
-            obj = context.active_object
-            # scatter_material = bpy.data.objects[obj.name].active_material.name
-            scatter_material = obj.material_slots[0].name
-            print(scatter_material)
-            scatter_node = bpy.data.materials[scatter_material].node_tree.nodes["Scatter on surface"]
-        except:
-            print("Error!")
-            pass
-        else:
-          obj = context.active_object
-          scatter_material = bpy.data.objects[obj.name].active_material.name
-          
-          row = layout.row()
-          col = row.column()
-          col.label(text="Selected Emitter: " + obj.name)
-          col.label(text="Scatter Material: " + scatter_material)
+            sn = mat.node_tree.nodes["Scatter on surface"]
+        except KeyError:
+            layout.label(text="Scatter node not found in material.", icon='ERROR')
+            return
 
-          row = layout.row()
-          col = row.column()
-          col.prop(context.scene, "OPSTYIX_active_collection", text="Active Collection")          
-          col.operator("opstyix.octane_scatter")
+        active_col = context.scene.OPSTYIX_active_collection
+        layout.label(text="Surface: " + obj.name, icon='OBJECT_DATA')
+        layout.label(text="Material: " + mat.name, icon='MATERIAL')
+        layout.label(text="Collection: " + (active_col.name if active_col else "None"), icon='OUTLINER_COLLECTION')
+        layout.separator(factor=0.5)
 
-          layout = self.layout
+        layout.operator("opstyix.begin_scatter_pick",
+                        text="Select Scatter Assets", icon='RESTRICT_SELECT_OFF')
+        layout.separator(factor=0.5)
 
-          row = layout.row()
-          col = row.column()
-          col.prop(
-              bpy.data.materials[scatter_material]
-              .node_tree.nodes["Scatter on surface"]
-              .inputs[22],
-              "default_value",
-              text="Instances",
-          )
+        row = layout.row(align=True)
+        row.prop(sn.inputs[22], "default_value", text="Instances")
+        row.prop(sn.inputs[20], "default_value", text="Seed")
 
-          col = layout.column(align=True)
-          col.prop(
-              bpy.data.materials[scatter_material]
-              .node_tree.nodes["Scatter on surface"]
-              .inputs[20],
-              "default_value",
-              text="Seed Location",
-          )          
-          col.prop(
-              bpy.data.materials[scatter_material]
-              .node_tree.nodes["Scatter on surface"]
-              .inputs[8],
-              "default_value",
-              text="Seed Selection",
-          )
+        row = layout.row(align=False)
+        col_min = row.column(align=True)
+        col_max = row.column(align=True)
 
-          col = layout.column(align=True)
+        col_min.label(text="Min")
+        col_min.prop(sn.inputs[41], "default_value", text="Rotation")
+        col_min.prop(sn.inputs[46], "default_value", text="Scale")
 
-          col.prop(
-              bpy.data.materials[scatter_material]
-              .node_tree.nodes["Scatter on surface"]
-              .inputs[41],
-              "default_value",
-            #   index=1,
-              text="Rotation Min.",
-          )
-          col.prop(
-              bpy.data.materials[scatter_material]
-              .node_tree.nodes["Scatter on surface"]
-              .inputs[42],
-              "default_value",
-            #   index=1,
-              text="Rotation Max.",
-          )   
-          col = layout.column(align=True)                             
-          col.prop(
-              bpy.data.materials[scatter_material]
-              .node_tree.nodes["Scatter on surface"]
-              .inputs[46],
-              "default_value",
-            #   index=0,
-              text="Scale Min.",
-          )
-          col.prop(
-              bpy.data.materials[scatter_material]
-              .node_tree.nodes["Scatter on surface"]
-              .inputs[47],
-              "default_value",
-            #   index=0,
-              text="Scale Max.",
-          )          
-        #   col.prop(
-        #       bpy.data.materials[scatter_material]
-        #       .node_tree.nodes["Scatter on surface"]
-        #       .inputs[46],
-        #       "default_value",
-        #     #   index=1,
-        #       text="Rotation Max.",
-        #   )
-        #   col.prop(
-        #       bpy.data.materials[scatter_material]
-        #       .node_tree.nodes["Scatter on surface"]
-        #       .inputs[46],
-        #       "default_value",
-        #       index=2,
-        #       text="Rotation Max.",
-        #   )                                  
-# bpy.data.materials["OS_WhiteWindflower"].node_tree.nodes["Scatter on surface"].inputs[41].default_value[1]
-        # row = layout.row()
-        # self.layout.prop(context.scene, "test_collection")
+        col_max.label(text="Max")
+        col_max.prop(sn.inputs[42], "default_value", text="Rotation")
+        col_max.prop(sn.inputs[47], "default_value", text="Scale")
 
-        # box = layout.box()
-        # split = box.split()
-        # col = split.column(align=True)
-        # col.operator("bpy.ops.view3d.localview", text="Toggle Local View")
 
 
 # * Global Variables
@@ -388,6 +498,10 @@ custom_icons = None
 # * Define all classes
 classes = [
     OctScatterProp,
+    OPSTYIX_OT_BeginScatterPick,
+    OPSTYIX_OT_ConfirmScatterPick,
+    OPSTYIX_OT_SetScatterSurface,
+    OPSTYIX_OT_CancelScatterPick,
     OPSTYIX_OT_get_nodes,
     OPSTYIX_OT_oct_scatter_on_surface_setup,
     OPSTYIX_OT_oct_create_scatter_mat,
@@ -396,8 +510,16 @@ classes = [
 ]
 
 
+def _redraw_panel(_scene):
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                for region in area.regions:
+                    if region.type == 'UI':
+                        region.tag_redraw()
+
+
 def register():
-    # Custom Icon
     global custom_icons
     custom_icons = bpy.utils.previews.new()
     addon_path = os.path.dirname(__file__)
@@ -409,16 +531,15 @@ def register():
 
     for cls in classes:
         register_class(cls)
-    # bpy.utils.register_class(OPSTYIX_OT_OctaneScatter)
-    # bpy.utils.register_class(OPSTYIX_PT_OctanePanel)
+
     bpy.types.Scene.OPSTYIX_OctScatterProperties = PointerProperty(type=OctScatterProp)
     bpy.types.Scene.OPSTYIX_active_collection = bpy.props.PointerProperty(
         type=bpy.types.Collection
     )
+    bpy.app.handlers.depsgraph_update_post.append(_redraw_panel)
 
 
 def unregister():
-    # Custom Icon
     global custom_icons
     bpy.utils.previews.remove(custom_icons)
 
@@ -427,11 +548,8 @@ def unregister():
 
     del bpy.types.Scene.OPSTYIX_OctScatterProperties
 
+    if _redraw_panel in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_redraw_panel)
 
-# *  RUN ON LOAD
+
 print("octane_scatter.py loaded")
-
-# TODO
-# Automatically assigns 4 objects to a selected object for Octane Scatter, assign object a special prefix so addon is able to recognize it?
-# Addon also needs to duplicate a scatter template material.
-# Add input fields for scatter settings. Instances, Seeds, etc.
