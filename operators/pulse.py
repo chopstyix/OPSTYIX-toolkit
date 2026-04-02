@@ -145,7 +145,7 @@ class PulseKeyframeProperties(PropertyGroup):
         name="Beat Pattern",
         description="Toggle which beats within the bar fire a pulse",
         size=MAX_BAR_LENGTH,
-        default=(True,) + (False,) * (MAX_BAR_LENGTH - 1),  # 8 slots
+        default=(True,) * MAX_BAR_LENGTH,
     )
     num_bars: IntProperty(
         name="Bars",
@@ -217,6 +217,11 @@ class PulseKeyframeProperties(PropertyGroup):
     )
 
     # ── Curves ────────────────────────────────────────────────────────────────
+    interp_advanced: BoolProperty(
+        name="Advanced",
+        description="Expose lead/fade frame counts and lead interpolation settings",
+        default=False,
+    )
     lead_interp: EnumProperty(
         name="Type",
         description="Interpolation for the lead-in ramp",
@@ -284,6 +289,32 @@ class PulseKeyframeProperties(PropertyGroup):
         ),
         default=True,
     )
+    # ── Beat Randomization ────────────────────────────────────────────────────
+    rand_beats: BoolProperty(
+        name="Randomize Beats",
+        description=(
+            "Randomly determine which beats fire each bar, "
+            "overriding the manual beat pattern selection"
+        ),
+        default=False,
+    )
+    beat_probability: FloatProperty(
+        name="Probability",
+        description="Probability (0–1) that any given beat fires when randomizing",
+        default=0.5,
+        min=0.0, max=1.0,
+        precision=2,
+        subtype='FACTOR',
+    )
+    beat_rand_seed: IntProperty(
+        name="Seed",
+        description=(
+            "Seed for beat randomization — same seed always produces "
+            "the same beat pattern. Change to get a different result."
+        ),
+        default=0,
+        min=0, max=99999,
+    )
 
 
 # ─── Shared logic ─────────────────────────────────────────────────────────────
@@ -302,17 +333,28 @@ def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=Non
               converted to radians before inserting.
     """
     active           = get_active_beat_indices(props)
-    active_set       = set(active)
     bpm              = float(bpm)
     pv               = (props.peak_value * math.pi / 180.0 if is_angle else props.peak_value)
     events           = []
     pulse_index      = 0
     last_active_peak = 0.0
 
-    beat_range = range(props.bar_length) if props.fill_gaps else active
-
     for bar in range(props.num_bars):
         bar_start = bar * props.bar_length
+
+        # Determine which beats are active this bar
+        if props.rand_beats:
+            bar_rng     = random.Random(props.beat_rand_seed + bar)
+            bar_active  = [i for i in range(props.bar_length)
+                           if bar_rng.random() < props.beat_probability]
+        else:
+            bar_active  = active
+        bar_active_set = set(bar_active)
+
+        beat_range = (range(props.bar_length)
+                      if (props.fill_gaps and not props.additive)
+                      else bar_active)
+
         for beat_offset in beat_range:
             global_beat = bar_start + beat_offset
             offset      = frame_offset if frame_offset is not None else props.frame_offset
@@ -328,7 +370,7 @@ def get_pulse_events(props, fps, bpm, rng=None, is_angle=False, frame_offset=Non
                 base_pv  = pv
                 base_val = 0.0
 
-            if beat_offset not in active_set:
+            if beat_offset not in bar_active_set:
                 fill_val = last_active_peak if props.additive else base_val
                 events.append({
                     "peak_frame": peak_frame,
@@ -404,10 +446,21 @@ def do_insert(fc, props, fps, bpm, seed=None, frame_offset=None):
             apply_kp(kp, props.lead_interp, props.lead_easing)
             total += 1
         else:
-            if props.lead_frames > 0:
+            if props.interp_advanced:
+                lead_frames  = props.lead_frames
+                lead_interp  = props.lead_interp
+                lead_easing  = props.lead_easing
+                event_frames = props.event_frames
+            else:
+                lead_frames  = 1
+                lead_interp  = 'LINEAR'
+                lead_easing  = 'AUTO'
+                event_frames = 0
+
+            if lead_frames > 0:
                 kp = fc.keyframe_points.insert(
-                    ev["lead_frame"], ev["lead_value"], options={'FAST'})
-                apply_kp(kp, props.lead_interp, props.lead_easing)
+                    ev["peak_frame"] - lead_frames, ev["lead_value"], options={'FAST'})
+                apply_kp(kp, lead_interp, lead_easing)
                 total += 1
 
             kp = fc.keyframe_points.insert(
@@ -415,9 +468,9 @@ def do_insert(fc, props, fps, bpm, seed=None, frame_offset=None):
             apply_kp(kp, props.fade_interp, props.fade_easing)
             total += 1
 
-            if props.event_frames > 0:
+            if event_frames > 0:
                 kp = fc.keyframe_points.insert(
-                    ev["end_frame"], ev["end_value"], options={'FAST'})
+                    ev["peak_frame"] + event_frames, ev["end_value"], options={'FAST'})
                 apply_kp(kp, props.fade_interp, props.fade_easing)
                 total += 1
 
@@ -448,7 +501,7 @@ def common_validate(operator, props, fc):
     if fc is None:
         operator.report({'ERROR'}, "No active F-Curve. Select a channel first.")
         return False
-    if not get_active_beat_indices(props):
+    if not props.rand_beats and not get_active_beat_indices(props):
         operator.report({'ERROR'}, "No beats active in the pattern.")
         return False
     return True
@@ -497,6 +550,8 @@ class GRAPH_OT_overwrite_pulse_keyframes(Operator):
         total   = 0
         if props.use_random:
             props.rand_seed = random.randint(0, 99999)
+        if props.rand_beats:
+            props.beat_rand_seed = random.randint(0, 99999)
         for i, fc in enumerate(curves):
             cleared += len(fc.keyframe_points)
             clear_fcurve_keyframes(fc)
@@ -552,7 +607,9 @@ class GRAPH_PT_pulse_keyframes(Panel):
 
             n    = props.bar_length
             cols = min(n, 8)
-            grid = col.grid_flow(
+            beat_col = col.column(align=True)
+            beat_col.enabled = not props.rand_beats
+            grid = beat_col.grid_flow(
                 row_major=True, columns=cols,
                 even_columns=True, even_rows=True, align=True,
             )
@@ -560,7 +617,19 @@ class GRAPH_PT_pulse_keyframes(Panel):
                 grid.prop(props, "beat_pattern", index=i,
                           text=str(i + 1), toggle=True)
 
-            col.prop(props, "fill_gaps")
+            col.separator(factor=0.5)
+
+            rand_row = col.row(align=True)
+            rand_row.prop(props, "rand_beats", text="Randomize", toggle=True,
+                          icon='FORCE_TURBULENCE')
+            if props.rand_beats:
+                sub = col.column(align=True)
+                sub.prop(props, "beat_probability", text="Probability", slider=True)
+                sub.prop(props, "beat_rand_seed", text="Seed")
+
+            row = col.row()
+            row.enabled = not props.additive
+            row.prop(props, "fill_gaps")
 
         # ── PEAK ──────────────────────────────────────────────────────────────
         # Mode, peak value, and degrees — all about what value gets written
@@ -604,10 +673,7 @@ class GRAPH_PT_pulse_keyframes(Panel):
                 col.prop(props, "rand_per_channel")
                 col.prop(props, "rand_allow_negative")
 
-        # ── ENVELOPE ─────────────────────────────────────────────────────────
-        # In standard mode: Lead and Fade each show their duration AND
-        # curve shape side-by-side so related controls stay together.
-        # In additive mode: only the single peak keyframe curve is shown.
+        # ── INTERPOLATION ─────────────────────────────────────────────────────
         header, body = layout.panel("pulse_envelope", default_closed=False)
         header.label(text="Interpolation", icon='IPO_EASE_IN_OUT')
         if body:
@@ -616,31 +682,43 @@ class GRAPH_PT_pulse_keyframes(Panel):
                 col.prop(props, "lead_interp", text="")
                 col.prop(props, "lead_easing", text="")
             else:
-                col.label(text="Lead", icon='TRIA_UP')
-                row = col.row(align=True)
-                row.prop(props, "lead_frames", text="Frames")
-                row.prop(props, "lead_interp", text="")
-                hint = col.row(align=True)
-                sub = hint.row()
-                sub.enabled = False
-                sub.label(text=f"{frames_to_beats(props.lead_frames, bpm, fps):.3f} b")
-                hint.prop(props, "lead_easing", text="")
+                col.prop(props, "interp_advanced", text="Advanced", toggle=True)
+                col.separator(factor=0.5)
 
-                col.separator()
+                if props.interp_advanced:
+                    col.label(text="Lead", icon='TRIA_UP')
+                    row = col.row(align=True)
+                    row.prop(props, "lead_frames", text="Frames")
+                    row.prop(props, "lead_interp", text="")
+                    hint = col.row(align=True)
+                    sub = hint.row()
+                    sub.enabled = False
+                    sub.label(text=f"{frames_to_beats(props.lead_frames, bpm, fps):.3f} b")
+                    hint.prop(props, "lead_easing", text="")
 
-                col.label(text="Fade", icon='TRIA_DOWN')
-                row2 = col.row(align=True)
-                row2.prop(props, "event_frames", text="Frames")
-                row2.prop(props, "fade_interp", text="")
-                hint2 = col.row(align=True)
-                sub2 = hint2.row()
-                sub2.enabled = False
-                sub2.label(text=f"{frames_to_beats(props.event_frames, bpm, fps):.3f} b")
-                hint2.prop(props, "fade_easing", text="")
+                    col.separator()
+
+                    col.label(text="Fade", icon='TRIA_DOWN')
+                    row2 = col.row(align=True)
+                    row2.prop(props, "event_frames", text="Frames")
+                    row2.prop(props, "fade_interp", text="")
+                    hint2 = col.row(align=True)
+                    sub2 = hint2.row()
+                    sub2.enabled = False
+                    sub2.label(text=f"{frames_to_beats(props.event_frames, bpm, fps):.3f} b")
+                    hint2.prop(props, "fade_easing", text="")
+                else:
+                    row = col.row(align=True)
+                    row.prop(props, "fade_interp", text="")
+                    row.prop(props, "fade_easing", text="")
 
 
 
         # ── WARNINGS ──────────────────────────────────────────────────────────
+        if not _get_selected_fcurves(context):
+            row = layout.row()
+            row.alert = True
+            row.label(text="No channel selected. Select an F-Curve to continue.", icon='INFO')
         if not props.additive:
             total_dur = props.lead_frames + props.event_frames
             if total_dur > fpb:
@@ -650,7 +728,7 @@ class GRAPH_PT_pulse_keyframes(Panel):
                     text=f"Lead + Event ({total_dur} fr) exceeds 1 beat ({fpb:.1f} fr)",
                     icon='ERROR',
                 )
-        if not active:
+        if not active and not props.rand_beats:
             row = layout.row()
             row.alert = True
             row.label(text="No beats active in pattern!", icon='ERROR')
@@ -659,8 +737,8 @@ class GRAPH_PT_pulse_keyframes(Panel):
         layout.separator(factor=0.5)
         row = layout.row(align=True)
         row.scale_y = 1.4
-        row.operator("graph.insert_pulse_keyframes",    text="Insert",    icon='KEYFRAME_HLT')
-        row.operator("graph.overwrite_pulse_keyframes", text="Overwrite", icon='FILE_REFRESH')
+        row.operator("graph.overwrite_pulse_keyframes", text="Apply",  icon='FILE_REFRESH')
+        row.operator("graph.insert_pulse_keyframes",   text="Insert", icon='KEYFRAME_HLT')
 
 
 # ─── Global Variable ──────────────────────────────────────────────────────────
