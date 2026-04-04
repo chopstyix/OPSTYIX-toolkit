@@ -231,7 +231,10 @@ class OPSTYIX_OT_DeleteMarkers(Operator):
     bl_description = "Initialize the deletion of all markers within the scene"
 
     def execute(self, context):
-        context.scene.timeline_markers.clear()
+        markers = context.scene.timeline_markers
+        to_remove = [m for m in markers if m.name.startswith('[') and m.name.endswith(']')]
+        for m in to_remove:
+            markers.remove(m)
         return {"FINISHED"}
 
 

@@ -64,29 +64,64 @@ def _get_all_fcurves(action):
                         if hasattr(cb, "fcurves"):
                             yield from cb.fcurves
 
+def _iter_actions(context):
+    """Yield every action reachable from the current context — mirrors what
+    the Graph Editor can display."""
+    seen = set()
+
+    def _emit(anim_data):
+        if anim_data is not None and anim_data.action is not None:
+            act = anim_data.action
+            if id(act) not in seen:
+                seen.add(id(act))
+                yield act
+
+    obj = context.active_object
+    if obj is not None:
+        yield from _emit(obj.animation_data)
+
+        if obj.data is not None:
+            yield from _emit(obj.data.animation_data)
+            shape_keys = getattr(obj.data, "shape_keys", None)
+            if shape_keys is not None:
+                yield from _emit(shape_keys.animation_data)
+
+        for slot in obj.material_slots:
+            mat = slot.material
+            if mat is None:
+                continue
+            yield from _emit(mat.animation_data)
+            if mat.node_tree is not None:
+                yield from _emit(mat.node_tree.animation_data)
+
+        for ps in getattr(obj, "particle_systems", []):
+            if ps.settings is not None:
+                yield from _emit(ps.settings.animation_data)
+
+    scene = context.scene
+    yield from _emit(scene.animation_data)
+    world = getattr(scene, "world", None)
+    if world is not None:
+        yield from _emit(world.animation_data)
+        if world.node_tree is not None:
+            yield from _emit(world.node_tree.animation_data)
+
+
 def _get_active_fcurve(context):
     fc = getattr(context, "active_editable_fcurve", None)
     if fc is not None:
         return fc
-    obj = context.active_object
-    if obj is None or obj.animation_data is None:
-        return None
-    action = obj.animation_data.action
-    if action is None:
-        return None
-    for curve in _get_all_fcurves(action):
-        if curve.select:
-            return curve
+    for action in _iter_actions(context):
+        for curve in _get_all_fcurves(action):
+            if curve.select:
+                return curve
     return None
 
 def _get_selected_fcurves(context):
-    obj = context.active_object
-    if obj is None or obj.animation_data is None:
-        return []
-    action = obj.animation_data.action
-    if action is None:
-        return []
-    return [fc for fc in _get_all_fcurves(action) if fc.select]
+    result = []
+    for action in _iter_actions(context):
+        result.extend(fc for fc in _get_all_fcurves(action) if fc.select)
+    return result
 
 
 
