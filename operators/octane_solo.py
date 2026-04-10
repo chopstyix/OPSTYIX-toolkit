@@ -83,10 +83,12 @@ class OPSTYIX_OT_OctaneSolo(Operator):
 
     @classmethod
     def poll(cls, context):
+        sd = context.space_data
         return (
             context.scene.render.engine == 'octane'
             and context.area is not None
             and context.area.type == 'NODE_EDITOR'
+            and getattr(sd, 'tree_type', None) == 'ShaderNodeTree'
         )
 
     def execute(self, context):
