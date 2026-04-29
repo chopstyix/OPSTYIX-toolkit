@@ -9,7 +9,7 @@ bl_info = {
     "name": "OPSTYIX Toolkit",
     "description": "A collection of scripts that makes animating to music just a bit easier :)",
     "author": "OPSTYIX",
-    "version": (1, 4, 2),
+    "version": (1, 5, 0),
     "blender": (4, 5, 0),
     "location": "View 3D",
     "warning": "",
