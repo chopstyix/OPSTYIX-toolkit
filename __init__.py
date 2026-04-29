@@ -3,7 +3,7 @@ import bpy
 from bpy.types import AddonPreferences
 from bpy.props import BoolProperty
 
-from .operators import beat_marker, octane_node_organizer, octane_scatter, octane_solo, pulse
+from .operators import beat_marker, octane_node_organizer, octane_rename_node, octane_scatter, octane_solo, octane_texture_drop, pulse
 
 bl_info = {
     "name": "OPSTYIX Toolkit",
@@ -23,6 +23,8 @@ _MODULE_MAP = {
     "enable_octane_node_organizer": octane_node_organizer,
     "enable_octane_scatter":        octane_scatter,
     "enable_octane_solo":           octane_solo,
+    "enable_octane_texture_drop":   octane_texture_drop,
+    "enable_octane_rename_node":    octane_rename_node,
 }
 
 
@@ -50,6 +52,12 @@ def _update_octane_scatter(self, context):
 
 def _update_octane_solo(self, context):
     _set_module(octane_solo, self.enable_octane_solo)
+
+def _update_octane_texture_drop(self, context):
+    _set_module(octane_texture_drop, self.enable_octane_texture_drop)
+
+def _update_octane_rename_node(self, context):
+    _set_module(octane_rename_node, self.enable_octane_rename_node)
 
 
 class OPSTYIXPreferences(AddonPreferences):
@@ -85,6 +93,18 @@ class OPSTYIXPreferences(AddonPreferences):
         default=True,
         update=_update_octane_solo,
     )
+    enable_octane_texture_drop: BoolProperty(
+        name="Octane Texture Drop",
+        description="Auto-converts dragged textures to the correct Octane image node type",
+        default=True,
+        update=_update_octane_texture_drop,
+    )
+    enable_octane_rename_node: BoolProperty(
+        name="Octane Rename Node",
+        description="Adds a right-click option to rename an image node to its texture filename",
+        default=True,
+        update=_update_octane_rename_node,
+    )
 
     def draw(self, context):
         layout = self.layout
@@ -98,6 +118,8 @@ class OPSTYIXPreferences(AddonPreferences):
                 ("enable_octane_node_organizer", "Organizes Octane material node trees (Coming Soon)"),
                 ("enable_octane_scatter",        "Builds Octane Scatter on Surface node graphs"),
                 ("enable_octane_solo",           "Solos an Octane texture node for isolated preview"),
+                ("enable_octane_texture_drop",   "Auto-converts dragged textures to the correct Octane image node type"),
+                ("enable_octane_rename_node",    "Right-click any image node to rename it to its texture filename"),
             ]),
         ]
 
@@ -128,6 +150,10 @@ def register():
         octane_scatter.register()
     if prefs.enable_octane_solo:
         octane_solo.register()
+    if prefs.enable_octane_texture_drop:
+        octane_texture_drop.register()
+    if prefs.enable_octane_rename_node:
+        octane_rename_node.register()
 
 
 def unregister():
