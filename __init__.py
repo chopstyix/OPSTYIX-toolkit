@@ -1,16 +1,16 @@
 # OPSTYIX TOOLKIT
 import bpy
 from bpy.types import AddonPreferences
-from bpy.props import BoolProperty
+from bpy.props import BoolProperty, PointerProperty, StringProperty
 
-from .operators import beat_marker, octane_node_organizer, octane_rename_node, octane_scatter, octane_solo, octane_swap_image_node, octane_texture_drop, pulse
+from .operators import beat_marker, octane_convert_nodes, octane_node_organizer, octane_rename_node, octane_scatter, octane_solo, octane_swap_image_node, octane_texture_drop, pulse
 
 bl_info = {
     "name": "OPSTYIX Toolkit",
     "description": "A collection of scripts that makes animating to music just a bit easier :)",
     "author": "OPSTYIX",
     "version": (1, 5, 0),
-    "blender": (5, 0, 0),
+    "blender": (4, 5, 0),
     "location": "View 3D",
     "warning": "",
     "wiki_url": "",
@@ -18,14 +18,15 @@ bl_info = {
 }
 
 _MODULE_MAP = {
-    "enable_beat_marker":            beat_marker,
-    "enable_pulse":                  pulse,
-    "enable_octane_node_organizer":  octane_node_organizer,
-    "enable_octane_scatter":         octane_scatter,
-    "enable_octane_solo":            octane_solo,
-    "enable_octane_texture_drop":    octane_texture_drop,
-    "enable_octane_rename_node":     octane_rename_node,
-    "enable_octane_swap_image_node": octane_swap_image_node,
+    "enable_beat_marker":             beat_marker,
+    "enable_pulse":                   pulse,
+    "enable_octane_node_organizer":   octane_node_organizer,
+    "enable_octane_scatter":          octane_scatter,
+    "enable_octane_solo":             octane_solo,
+    "enable_octane_texture_drop":     octane_texture_drop,
+    "enable_octane_rename_node":      octane_rename_node,
+    "enable_octane_swap_image_node":  octane_swap_image_node,
+    "enable_octane_convert_nodes":    octane_convert_nodes,
 }
 
 _OCTANE_MODULES = {
@@ -35,6 +36,7 @@ _OCTANE_MODULES = {
     "enable_octane_texture_drop",
     "enable_octane_rename_node",
     "enable_octane_swap_image_node",
+    "enable_octane_convert_nodes",
 }
 
 # Stable owner object for msgbus subscription lifetime
@@ -80,6 +82,9 @@ def _update_octane_rename_node(self, context):
 def _update_octane_swap_image_node(self, context):
     _set_module(octane_swap_image_node, self.enable_octane_swap_image_node and _is_octane())
 
+def _update_octane_convert_nodes(self, context):
+    _set_module(octane_convert_nodes, self.enable_octane_convert_nodes and _is_octane())
+
 
 def _on_engine_change():
     """Called by msgbus whenever scene.render.engine changes."""
@@ -107,6 +112,64 @@ def _subscribe_engine():
 def _load_post_handler(_):
     _subscribe_engine()
     _on_engine_change()
+
+
+class OctaneConvertTagsPreferences(bpy.types.PropertyGroup):
+    albedo: StringProperty(
+        name="Albedo / Base Color",
+        description="Space-separated keywords that identify albedo/diffuse/base-color textures",
+        default="diffuse diff albedo color col basecolor base bc",
+    )
+    roughness: StringProperty(
+        name="Roughness",
+        description="Space-separated keywords that identify roughness/gloss textures",
+        default="rough roughness rgh gloss glossiness",
+    )
+    metallic: StringProperty(
+        name="Metallic",
+        description="Space-separated keywords that identify metallic/metalness textures",
+        default="metal metallic metalness mtl",
+    )
+    normal: StringProperty(
+        name="Normal",
+        description="Space-separated keywords that identify normal map textures",
+        default="normal nrm nor nml",
+    )
+    bump: StringProperty(
+        name="Bump",
+        description="Space-separated keywords that identify bump map textures",
+        default="bump bmp",
+    )
+    displacement: StringProperty(
+        name="Displacement",
+        description="Space-separated keywords that identify displacement/height textures",
+        default="height displacement disp",
+    )
+    opacity: StringProperty(
+        name="Opacity",
+        description="Space-separated keywords that identify opacity/alpha textures",
+        default="opacity alpha transparency trans",
+    )
+    emission: StringProperty(
+        name="Emission",
+        description="Space-separated keywords that identify emission textures",
+        default="emission emissive emit",
+    )
+    specular: StringProperty(
+        name="Specular",
+        description="Space-separated keywords that identify specular textures",
+        default="spec specular",
+    )
+    subsurface: StringProperty(
+        name="Subsurface",
+        description="Space-separated keywords that identify subsurface/SSS textures",
+        default="sss subsurface",
+    )
+    greyscale_only: StringProperty(
+        name="Greyscale (no socket)",
+        description="Keywords for greyscale textures that have no Universal Material socket (AO, cavity, mask…)",
+        default="ao ambientocclusion occlusion cavity mask thickness",
+    )
 
 
 class OPSTYIXPreferences(AddonPreferences):
@@ -160,6 +223,18 @@ class OPSTYIXPreferences(AddonPreferences):
         default=True,
         update=_update_octane_swap_image_node,
     )
+    enable_octane_convert_nodes: BoolProperty(
+        name="Octane Convert Nodes",
+        description="Converts selected Cycles/EEVEE Image Texture nodes to Octane RGB or Greyscale nodes",
+        default=True,
+        update=_update_octane_convert_nodes,
+    )
+    show_octane_convert_tags: BoolProperty(
+        name="Edit texture detection tags",
+        description="Expand to customise the filename keywords used when converting nodes",
+        default=False,
+    )
+    octane_convert_tags: PointerProperty(type=OctaneConvertTagsPreferences)
 
     def draw(self, context):
         layout = self.layout
@@ -170,12 +245,13 @@ class OPSTYIXPreferences(AddonPreferences):
                 ("enable_pulse",       "Inserts beat-driven keyframes in the Graph Editor"),
             ]),
             ("Octane Specific Tools", [
-                ("enable_octane_node_organizer", "Organizes Octane material node trees (Coming Soon)"),
-                ("enable_octane_scatter",        "Builds Octane Scatter on Surface node graphs"),
-                ("enable_octane_solo",           "Solos an Octane texture node for isolated preview"),
-                ("enable_octane_texture_drop",   "Auto-converts dragged textures to the correct Octane image node type"),
-                ("enable_octane_rename_node",    "Right-click any image node to rename it to its texture filename"),
+                ("enable_octane_node_organizer",  "Organizes Octane material node trees (Coming Soon)"),
+                ("enable_octane_scatter",         "Builds Octane Scatter on Surface node graphs"),
+                ("enable_octane_solo",            "Solos an Octane texture node for isolated preview"),
+                ("enable_octane_texture_drop",    "Auto-converts dragged textures to the correct Octane image node type"),
+                ("enable_octane_rename_node",     "Right-click any image node to rename it to its texture filename"),
                 ("enable_octane_swap_image_node", "Right-click any image node to swap between RGB and Greyscale"),
+                ("enable_octane_convert_nodes",   "Converts selected Cycles/EEVEE Image Texture nodes to Octane equivalents"),
             ]),
         ]
 
@@ -198,8 +274,36 @@ class OPSTYIXPreferences(AddonPreferences):
                 split.label(text=desc)
             layout.separator(factor=0.5)
 
+        # ── Texture tag editor (Convert Nodes) ───────────────────────────────
+        layout.label(text="Convert Nodes — Texture Detection Tags", icon='DOWNARROW_HLT')
+        box = layout.box()
+        col = box.column(align=True)
+        col.prop(self, "show_octane_convert_tags",
+                 text="Edit texture detection tags", toggle=True)
+        if self.show_octane_convert_tags:
+            tags = self.octane_convert_tags
+            col.separator(factor=0.5)
+            for attr, label in (
+                ("albedo",         "Albedo / Base Color"),
+                ("roughness",      "Roughness"),
+                ("metallic",       "Metallic"),
+                ("normal",         "Normal"),
+                ("bump",           "Bump"),
+                ("displacement",   "Displacement"),
+                ("opacity",        "Opacity"),
+                ("emission",       "Emission"),
+                ("specular",       "Specular"),
+                ("subsurface",     "Subsurface"),
+                ("greyscale_only", "Greyscale (no socket)"),
+            ):
+                row = col.split(factor=0.25, align=True)
+                row.label(text=label)
+                row.prop(tags, attr, text="")
+        layout.separator(factor=0.5)
+
 
 def register():
+    bpy.utils.register_class(OctaneConvertTagsPreferences)
     bpy.utils.register_class(OPSTYIXPreferences)
     prefs = bpy.context.preferences.addons[__name__].preferences
     if prefs.enable_beat_marker:
@@ -207,24 +311,11 @@ def register():
     if prefs.enable_pulse:
         pulse.register()
 
-    # Octane modules only register if Octane is the active render engine
-    is_oct = _is_octane()
-    if is_oct:
-        if prefs.enable_octane_node_organizer:
-            octane_node_organizer.register()
-        if prefs.enable_octane_scatter:
-            octane_scatter.register()
-        if prefs.enable_octane_solo:
-            octane_solo.register()
-        if prefs.enable_octane_texture_drop:
-            octane_texture_drop.register()
-        if prefs.enable_octane_rename_node:
-            octane_rename_node.register()
-        if prefs.enable_octane_swap_image_node:
-            octane_swap_image_node.register()
-
     bpy.app.handlers.load_post.append(_load_post_handler)
     _subscribe_engine()
+    _on_engine_change()  # register octane modules if engine is already Octane
+    # bpy.context.scene may be None during addon load; retry once context is ready
+    bpy.app.timers.register(_on_engine_change, first_interval=0.1)
 
 
 def unregister():
@@ -237,6 +328,7 @@ def unregister():
         except Exception:
             pass
     bpy.utils.unregister_class(OPSTYIXPreferences)
+    bpy.utils.unregister_class(OctaneConvertTagsPreferences)
 
 
 if __name__ == "__main__":

@@ -56,6 +56,16 @@ def _get_group_output_node(node_tree):
     return None
 
 
+def _get_or_create_material_output(node_tree):
+    """Return the first Material Output node targeted to All, creating one if needed."""
+    for node in node_tree.nodes:
+        if node.type == 'OUTPUT_MATERIAL' and node.target == 'ALL':
+            return node
+    mat_out = node_tree.nodes.new('ShaderNodeOutputMaterial')
+    mat_out.target = 'ALL'
+    return mat_out
+
+
 def _solo_is_active(context):
     """Return True if any solo mode is currently active."""
     if _solo_state['material_solo']:
@@ -100,11 +110,13 @@ class OPSTYIX_OT_OctaneSolo(Operator):
 
         node_tree = obj.active_material.node_tree
 
+        mat_out = _get_or_create_material_output(node_tree)
+
         # ── Exit material solo ────────────────────────────────────────────────
         if _solo_state['material_solo']:
             if _solo_state['old_input'] is not None:
                 node_tree.links.new(
-                    node_tree.nodes['Material Output'].inputs['Surface'],
+                    mat_out.inputs['Surface'],
                     _solo_state['old_input'],
                 )
             _solo_state['old_input']     = None
@@ -126,7 +138,7 @@ class OPSTYIX_OT_OctaneSolo(Operator):
 
             if _solo_state['old_input'] is not None:
                 node_tree.links.new(
-                    node_tree.nodes['Material Output'].inputs['Surface'],
+                    mat_out.inputs['Surface'],
                     _solo_state['old_input'],
                 )
 
@@ -149,13 +161,8 @@ class OPSTYIX_OT_OctaneSolo(Operator):
             (s for s in active_node.outputs if s.name == 'Material out'), None
         )
         if mat_out_socket is not None:
-            _solo_state['old_input'] = _find_from_socket(
-                node_tree.nodes['Material Output'].inputs['Surface']
-            )
-            node_tree.links.new(
-                node_tree.nodes['Material Output'].inputs['Surface'],
-                mat_out_socket,
-            )
+            _solo_state['old_input'] = _find_from_socket(mat_out.inputs['Surface'])
+            node_tree.links.new(mat_out.inputs['Surface'], mat_out_socket)
             _solo_state['material_solo'] = True
             return {'FINISHED'}
 
@@ -164,13 +171,9 @@ class OPSTYIX_OT_OctaneSolo(Operator):
             self.report({'WARNING'}, "Active node must have an Octane texture or material output.")
             return {'CANCELLED'}
 
-        # Anchor solo nodes to the left of the Material Output node
-        mat_output_node = node_tree.nodes.get('Material Output')
-        if mat_output_node is not None:
-            anchor_x = mat_output_node.location.x
-            anchor_y = mat_output_node.location.y - 280
-        else:
-            anchor_x, anchor_y = 0, 0
+        # Anchor solo nodes below the Material Output node
+        anchor_x = mat_out.location.x
+        anchor_y = mat_out.location.y - 280
 
         # Create diffuse shell
         diff_node          = node_tree.nodes.new(type='OctaneDiffuseMaterial')
@@ -202,13 +205,8 @@ class OPSTYIX_OT_OctaneSolo(Operator):
         node_tree.links.new(diff_node.inputs['Emission'], em_node.outputs['Emission out'])
 
         # Save original surface connection
-        _solo_state['old_input'] = _find_from_socket(
-            node_tree.nodes['Material Output'].inputs['Surface']
-        )
-        node_tree.links.new(
-            node_tree.nodes['Material Output'].inputs['Surface'],
-            diff_node.outputs['Material out'],
-        )
+        _solo_state['old_input'] = _find_from_socket(mat_out.inputs['Surface'])
+        node_tree.links.new(mat_out.inputs['Surface'], diff_node.outputs['Material out'])
 
         # Handle group node context
         group_output = _get_group_output_node(active_node.id_data)
