@@ -1,7 +1,7 @@
 import os
 import re
 import bpy
-from bpy.types import Operator, Panel
+from bpy.types import Operator, Panel, Menu
 from bpy.utils import register_class, unregister_class
 
 
@@ -46,41 +46,40 @@ def _build_keyword_map():
 def _parse_stem(image):
     """Return the lowercase filename parts split on common separators."""
     if image is None:
-        return set()
+        return []
     raw  = image.filepath or image.name
     stem = os.path.splitext(os.path.basename(raw))[0].lower()
-    return set(re.split(r'[_\-\.\s]+', stem))
+    return re.split(r'[_\-\.\s]+', stem)
+
+
+def _stem_suffix(image):
+    """Return only the last part of the filename stem — where the map type lives."""
+    parts = _parse_stem(image)
+    return parts[-1] if parts else ''
 
 
 def _is_greyscale(image, kw_map):
     grey_kws = {kw for kw, (grey, _) in kw_map.items() if grey}
-    return bool(grey_kws & _parse_stem(image))
+    return _stem_suffix(image) in grey_kws
 
 
 def _get_socket_name(image, kw_map):
     """Return the Universal Material socket name for this image, or None."""
-    for part in _parse_stem(image):
-        entry = kw_map.get(part)
-        if entry is not None:
-            return entry[1]
-    return None
+    entry = kw_map.get(_stem_suffix(image))
+    return entry[1] if entry is not None else None
 
 
 def _get_map_label(image, kw_map):
-    """Return a tidy display label derived from keyword matching, or None.
-
-    Uses the socket name when available (e.g. 'Roughness'), otherwise
-    title-cases the matched keyword for greyscale-only maps (e.g. 'ao' → 'AO').
-    """
-    for part in _parse_stem(image):
-        entry = kw_map.get(part)
-        if entry is not None:
-            socket = entry[1]
-            if socket is not None:
-                return socket
-            # greyscale_only: no socket — format the keyword itself
-            return part.upper() if len(part) <= 3 else part.title()
-    return None
+    """Return a tidy display label derived from the filename suffix, or None."""
+    suffix = _stem_suffix(image)
+    entry  = kw_map.get(suffix)
+    if entry is None:
+        return None
+    socket = entry[1]
+    if socket is not None:
+        return socket
+    # greyscale_only: no socket — format the keyword itself
+    return suffix.upper() if len(suffix) <= 3 else suffix.title()
 
 
 # RGB sockets that represent linear-space data and need Legacy gamma = 1.0
@@ -380,10 +379,10 @@ class OPSTYIX_OT_DuplicateAsAlpha(Operator):
 
 class OPSTYIX_OT_AddSharedTransform(Operator):
     bl_idname      = "opstyix.add_shared_transform"
-    bl_label       = "Add Shared 3D Transform"
+    bl_label       = "Add Shared Transform & Projection"
     bl_description = (
-        "Create a single 3D Transformation node and connect it to the "
-        "Transform socket of all selected Octane image nodes."
+        "Create a shared 3D Transformation node and a Mesh UV Projection node, "
+        "connecting each to all selected Octane image nodes."
     )
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -412,35 +411,83 @@ class OPSTYIX_OT_AddSharedTransform(Operator):
             self.report({'WARNING'}, "No Octane image nodes selected.")
             return {'CANCELLED'}
 
-        # Place the transform node left of the leftmost selected node, vertically centred
         min_x = min(n.location.x for n in candidates)
         avg_y = sum(n.location.y for n in candidates) / len(candidates)
 
+        # ── 3D Transform ──────────────────────────────────────────────────────
         try:
-            transform_node          = node_tree.nodes.new(type='OctaneTransformValue')
+            transform_node = node_tree.nodes.new(type='OctaneTransformValue')
         except RuntimeError as e:
             self.report({'ERROR'}, f"Could not create transform node: {e}")
             return {'CANCELLED'}
 
-        transform_node.location = (min_x - 280, avg_y)
-        transform_node.label    = "3D Transform"
+        transform_node.location = (min_x - 280, avg_y + 100)
 
-        tex_out = transform_node.outputs.get('Transform out') or (
+        transform_out = transform_node.outputs.get('Transform out') or (
             transform_node.outputs[0] if transform_node.outputs else None
         )
-        if tex_out is None:
-            self.report({'WARNING'}, "Transform node has no output socket.")
+
+        # ── Mesh UV Projection ────────────────────────────────────────────────
+        try:
+            projection_node = node_tree.nodes.new(type='OctaneMeshUVProjection')
+        except RuntimeError as e:
+            self.report({'ERROR'}, f"Could not create projection node: {e}")
             return {'CANCELLED'}
 
-        connected = 0
-        for node in candidates:
-            transform_input = node.inputs.get('UV transform')
-            if transform_input is not None:
-                node_tree.links.new(transform_input, tex_out)
-                connected += 1
+        projection_node.location = (min_x - 280, avg_y - 300)
 
-        self.report({'INFO'}, f"3D Transform connected to {connected} node(s).")
+        projection_out = projection_node.outputs.get('Projection out') or (
+            projection_node.outputs[0] if projection_node.outputs else None
+        )
+
+        # ── Wire both to every candidate ──────────────────────────────────────
+        transform_count  = 0
+        projection_count = 0
+
+        for node in candidates:
+            if transform_out is not None:
+                uv_input = node.inputs.get('UV transform')
+                if uv_input is not None:
+                    node_tree.links.new(uv_input, transform_out)
+                    transform_count += 1
+
+            if projection_out is not None:
+                proj_input = node.inputs.get('Projection')
+                if proj_input is not None:
+                    node_tree.links.new(proj_input, projection_out)
+                    projection_count += 1
+
+        self.report(
+            {'INFO'},
+            f"Transform → {transform_count} node(s), Projection → {projection_count} node(s)."
+        )
         return {'FINISHED'}
+
+
+# ─── Context Menu ─────────────────────────────────────────────────────────────
+
+class OPSTYIX_MT_NodeContextMenu(Menu):
+    bl_idname = "OPSTYIX_MT_node_context_menu"
+    bl_label  = "OPSTYIX"
+
+    def draw(self, context):
+        layout  = self.layout
+        node_tree = context.space_data.edit_tree if context.space_data else None
+        uni_mat   = _find_universal_material(node_tree) if node_tree else None
+
+        layout.operator("opstyix.convert_to_octane",          icon='NODE_COMPOSITING')
+        row = layout.row()
+        row.enabled = uni_mat is not None
+        row.operator("opstyix.wire_to_universal_material",    icon='LINKED')
+        layout.operator("opstyix.duplicate_as_alpha",         icon='IMAGE_ALPHA')
+        layout.operator("opstyix.add_shared_transform",       icon='OBJECT_ORIGIN')
+
+
+def _draw_node_context_menu(self, context):
+    if context.scene.render.engine != 'octane':
+        return
+    self.layout.separator()
+    self.layout.menu("OPSTYIX_MT_node_context_menu", icon='TOOL_SETTINGS')
 
 
 # ─── Panel ────────────────────────────────────────────────────────────────────
@@ -496,7 +543,7 @@ class OPSTYIX_PT_ConvertToOctane(Panel):
         row.scale_y = 1.4
         row.operator(
             "opstyix.add_shared_transform",
-            text="Add Shared 3D Transform",
+            text="Add Shared Transform & Projection",
             icon='OBJECT_ORIGIN',
         )
 
@@ -517,6 +564,7 @@ CLASSES = [
     OPSTYIX_OT_ConvertToOctane,
     OPSTYIX_OT_DuplicateAsAlpha,
     OPSTYIX_OT_AddSharedTransform,
+    OPSTYIX_MT_NodeContextMenu,
     OPSTYIX_PT_ConvertToOctane,
 ]
 
@@ -524,9 +572,11 @@ CLASSES = [
 def register():
     for cls in CLASSES:
         register_class(cls)
+    bpy.types.NODE_MT_context_menu.append(_draw_node_context_menu)
 
 
 def unregister():
+    bpy.types.NODE_MT_context_menu.remove(_draw_node_context_menu)
     for cls in reversed(CLASSES):
         unregister_class(cls)
 

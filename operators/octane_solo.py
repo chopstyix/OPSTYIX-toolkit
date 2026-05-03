@@ -31,7 +31,7 @@ def _find_from_socket(to_socket):
 
 def _find_to_socket(from_socket):
     """Return the socket that from_socket feeds into, or None."""
-    if not from_socket.is_linked:
+    if not from_socketW.is_linked:
         return None
     node_tree = from_socket.id_data
     for link in node_tree.links:
