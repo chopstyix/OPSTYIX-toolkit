@@ -3,7 +3,7 @@ import bpy
 from bpy.types import AddonPreferences
 from bpy.props import BoolProperty, PointerProperty, StringProperty
 
-from .operators import beat_marker, lens_shift, octane_convert_nodes, octane_node_organizer, octane_rename_node, octane_scatter, octane_solo, octane_swap_image_node, octane_texture_drop, pulse
+from .operators import beat_marker, lens_shift, object_utils, octane_convert_nodes, octane_node_organizer, octane_rename_node, octane_scatter, octane_solo, octane_swap_image_node, octane_texture_drop, pulse
 
 bl_info = {
     "name": "OPSTYIX Toolkit",
@@ -21,6 +21,7 @@ _MODULE_MAP = {
     "enable_beat_marker":             beat_marker,
     "enable_pulse":                   pulse,
     "enable_lens_shift":              lens_shift,
+    "enable_object_utils":            object_utils,
     "enable_octane_node_organizer":   octane_node_organizer,
     "enable_octane_scatter":          octane_scatter,
     "enable_octane_solo":             octane_solo,
@@ -67,6 +68,9 @@ def _update_pulse(self, context):
 
 def _update_lens_shift(self, context):
     _set_module(lens_shift, self.enable_lens_shift)
+
+def _update_object_utils(self, context):
+    _set_module(object_utils, self.enable_object_utils)
 
 def _update_octane_node_organizer(self, context):
     _set_module(octane_node_organizer, self.enable_octane_node_organizer and _is_octane())
@@ -197,6 +201,12 @@ class OPSTYIXPreferences(AddonPreferences):
         default=True,
         update=_update_lens_shift,
     )
+    enable_object_utils: BoolProperty(
+        name="Object Utilities",
+        description="Adds extra options to the 3D Viewport right-click menu",
+        default=True,
+        update=_update_object_utils,
+    )
     enable_octane_node_organizer: BoolProperty(
         name="Octane Node Organizer",
         description="Enable the Octane Node Organizer module",
@@ -251,9 +261,10 @@ class OPSTYIXPreferences(AddonPreferences):
 
         categories = [
             ("General Tools", [
-                ("enable_beat_marker", "Creates beat-synced timeline markers"),
-                ("enable_pulse",       "Inserts beat-driven keyframes in the Graph Editor"),
-                ("enable_lens_shift",  "Adds Lens Shift controls to the Camera Data Properties panel"),
+                ("enable_beat_marker",  "Creates beat-synced timeline markers"),
+                ("enable_pulse",        "Inserts beat-driven keyframes in the Graph Editor"),
+                ("enable_lens_shift",   "Adds Lens Shift controls to the Camera Data Properties panel"),
+                ("enable_object_utils", "Adds extra options to the 3D Viewport right-click menu"),
             ]),
             ("Octane Specific Tools", [
                 ("enable_octane_node_organizer",  "Organizes Octane material node trees (Coming Soon)"),
@@ -323,6 +334,8 @@ def register():
         pulse.register()
     if prefs.enable_lens_shift:
         lens_shift.register()
+    if prefs.enable_object_utils:
+        object_utils.register()
 
     bpy.app.handlers.load_post.append(_load_post_handler)
     _subscribe_engine()
