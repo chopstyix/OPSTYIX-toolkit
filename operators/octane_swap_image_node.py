@@ -62,6 +62,18 @@ class OPSTYIX_OT_swap_image_node(bpy.types.Operator):
                 except Exception:
                     pass
 
+        # apply color after all node operations
+        if target_type == _GREY_TYPE:
+            new_node.use_custom_color = True
+            new_node.color = (0.35, 0.35, 0.35)
+        else:
+            new_node.use_custom_color = False
+
+        node_tree.update_tag()
+        for area in context.screen.areas:
+            if area.type == 'NODE_EDITOR':
+                area.tag_redraw()
+
         direction = "→ Greyscale" if target_type == _GREY_TYPE else "→ RGB"
         print(f"OPSTYIX: swapped '{label or image_name}' {direction}")
         return {'FINISHED'}
