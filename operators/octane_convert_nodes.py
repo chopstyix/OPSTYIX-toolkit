@@ -1022,6 +1022,65 @@ class OPSTYIX_OT_SyncMovieFrameDuration(Operator):
         return {'FINISHED'}
 
 
+class OPSTYIX_OT_DissolveNode(Operator):
+    bl_idname      = "opstyix.dissolve_node"
+    bl_label       = "Dissolve Node"
+    bl_description = (
+        "Remove selected nodes and reconnect their sockets, "
+        "preserving the connection chain"
+    )
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return (
+            context.area is not None
+            and context.area.type == 'NODE_EDITOR'
+            and bool(context.selected_nodes)
+        )
+
+    def execute(self, context):
+        node_tree = context.space_data.edit_tree
+        if node_tree is None:
+            return {'CANCELLED'}
+
+        dissolved = 0
+
+        for node in list(context.selected_nodes):
+            # Collect the first linked from_socket for each input, in order
+            from_sockets = []
+            for inp in node.inputs:
+                for link in inp.links:
+                    from_sockets.append(link.from_socket)
+                    break
+
+            # Collect all to_sockets from all linked outputs, in order
+            to_sockets = []
+            for out in node.outputs:
+                for link in out.links:
+                    to_sockets.append(link.to_socket)
+
+            node_tree.nodes.remove(node)
+
+            if not from_sockets or not to_sockets:
+                dissolved += 1
+                continue
+
+            # Pair each to_socket with the best matching from_socket.
+            # Primary: match by index; overflow falls back to the last from_socket.
+            for i, to_socket in enumerate(to_sockets):
+                from_socket = from_sockets[min(i, len(from_sockets) - 1)]
+                try:
+                    node_tree.links.new(to_socket, from_socket)
+                except Exception:
+                    pass
+
+            dissolved += 1
+
+        self.report({'INFO'}, f"Dissolved {dissolved} node(s).")
+        return {'FINISHED'}
+
+
 class OPSTYIX_MT_NodeContextMenu(Menu):
     bl_idname = "OPSTYIX_MT_node_context_menu"
     bl_label  = "OPSTYIX"
@@ -1144,9 +1203,12 @@ CLASSES = [
     OPSTYIX_OT_DuplicateAsAlpha,
     OPSTYIX_OT_AddSharedTransform,
     OPSTYIX_OT_SyncMovieFrameDuration,
+    OPSTYIX_OT_DissolveNode,
     OPSTYIX_MT_NodeContextMenu,
     OPSTYIX_PT_ConvertToOctane,
 ]
+
+_keymaps = []
 
 
 def register():
@@ -1154,8 +1216,20 @@ def register():
         register_class(cls)
     bpy.types.NODE_MT_context_menu.append(_draw_node_context_menu)
 
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.addon
+    if kc:
+        km = kc.keymaps.new(name='Node Editor', space_type='NODE_EDITOR')
+        kmi = km.keymap_items.new(
+            'opstyix.dissolve_node', type='X', value='PRESS', ctrl=True
+        )
+        _keymaps.append((km, kmi))
+
 
 def unregister():
+    for km, kmi in _keymaps:
+        km.keymap_items.remove(kmi)
+    _keymaps.clear()
     bpy.types.NODE_MT_context_menu.remove(_draw_node_context_menu)
     for cls in reversed(CLASSES):
         unregister_class(cls)
