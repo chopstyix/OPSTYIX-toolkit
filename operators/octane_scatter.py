@@ -287,14 +287,13 @@ class OPSTYIX_OT_oct_scatter_on_surface_setup(Operator):
                 node_tree.links.new(emitter_obj.outputs[2], scatter_node.inputs["Surface"])     
 
             else:
-                # node = 3
-                exec(f"scatter_obj_{x} = node_tree.nodes.new(\"OctaneObjectData\")")
-                exec(f"scatter_obj_{x}.label = \"Scatter Object {x}\"")
-                exec(f"scatter_obj_{x}.name = \"Scatter Object {x}\"")    
-                exec(f"scatter_obj_{x}.location = [scatter_node.location.x - 400, scatter_node.location.y - (250 * {x})]")    
-                exec(f"scatter_obj_{x}.use_custom_color = True")    
-                exec(f"scatter_obj_{x}.color = (0.274738, 0.336141, 0.608)")    
-                exec(f"node_tree.links.new(scatter_obj_{x}.outputs[2], scatter_node.inputs[{node}])")
+                scatter_obj = node_tree.nodes.new("OctaneObjectData")
+                scatter_obj.label = f"Scatter Object {x}"
+                scatter_obj.name = f"Scatter Object {x}"
+                scatter_obj.location = [scatter_node.location.x - 400, scatter_node.location.y - (250 * x)]
+                scatter_obj.use_custom_color = True
+                scatter_obj.color = (0.274738, 0.336141, 0.608)
+                node_tree.links.new(scatter_obj.outputs[2], scatter_node.inputs[node])
                 node += 1
         
         # bpy.ops.node.nw_swtch_node_type(to_type="OctaneScatterOnSurface") 

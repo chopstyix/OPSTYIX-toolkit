@@ -3,7 +3,7 @@ import bpy
 from bpy.types import AddonPreferences
 from bpy.props import BoolProperty, PointerProperty, StringProperty
 
-from .operators import beat_marker, object_utils, octane_convert_nodes, octane_node_organizer, octane_rename_node, octane_scatter, octane_solo, octane_swap_image_node, octane_texture_drop, pulse
+from .operators import beat_marker, object_utils, octane_convert_nodes, octane_node_organizer, octane_rename_node, octane_scatter, octane_solo, octane_swap_image_node, octane_swap_node_type, octane_texture_drop, pulse
 
 bl_info = {
     "name": "OPSTYIX Toolkit",
@@ -27,6 +27,7 @@ _MODULE_MAP = {
     "enable_octane_texture_drop":     octane_texture_drop,
     "enable_octane_rename_node":      octane_rename_node,
     "enable_octane_swap_image_node":  octane_swap_image_node,
+    "enable_octane_swap_node_type":   octane_swap_node_type,
     "enable_octane_convert_nodes":    octane_convert_nodes,
 }
 
@@ -37,6 +38,7 @@ _OCTANE_MODULES = {
     "enable_octane_texture_drop",
     "enable_octane_rename_node",
     "enable_octane_swap_image_node",
+    "enable_octane_swap_node_type",
     "enable_octane_convert_nodes",
 }
 
@@ -86,6 +88,9 @@ def _update_octane_rename_node(self, context):
 
 def _update_octane_swap_image_node(self, context):
     _set_module(octane_swap_image_node, self.enable_octane_swap_image_node and _is_octane())
+
+def _update_octane_swap_node_type(self, context):
+    _set_module(octane_swap_node_type, self.enable_octane_swap_node_type and _is_octane())
 
 def _update_octane_convert_nodes(self, context):
     _set_module(octane_convert_nodes, self.enable_octane_convert_nodes and _is_octane())
@@ -234,6 +239,12 @@ class OPSTYIXPreferences(AddonPreferences):
         default=True,
         update=_update_octane_swap_image_node,
     )
+    enable_octane_swap_node_type: BoolProperty(
+        name="Octane Swap Node Type",
+        description="Ctrl+S on any Octane node opens a searchable menu to swap it to a different Octane node type",
+        default=True,
+        update=_update_octane_swap_node_type,
+    )
     enable_octane_convert_nodes: BoolProperty(
         name="Octane Convert Nodes",
         description="Converts selected Cycles/EEVEE Image Texture nodes to Octane RGB or Greyscale nodes",
@@ -263,6 +274,7 @@ class OPSTYIXPreferences(AddonPreferences):
                 ("enable_octane_texture_drop",    "Auto-converts dragged textures to the correct Octane image node type"),
                 ("enable_octane_rename_node",     "Right-click any image node to rename it to its texture filename"),
                 ("enable_octane_swap_image_node", "Right-click any image node to swap between RGB and Greyscale"),
+                ("enable_octane_swap_node_type",  "Ctrl+S on any Octane node to swap it to a different Octane node type"),
                 ("enable_octane_convert_nodes",   "Converts selected Cycles/EEVEE Image Texture nodes to Octane equivalents"),
             ]),
         ]

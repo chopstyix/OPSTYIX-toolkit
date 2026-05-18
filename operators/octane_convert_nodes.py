@@ -86,6 +86,33 @@ def _get_map_label(image, kw_map):
 _LINEAR_SOCKETS = {'Roughness', 'Metallic', 'Specular', 'Bump', 'Normal',
                    'Displacement', 'Opacity'}
 
+_NON_COLOR_SPACE = "Non-Color data"
+
+
+def _octane_version():
+    """Return the OctaneBlender addon version as a tuple, or (0, 0) if unavailable."""
+    import sys
+    try:
+        mod = sys.modules.get("octane")
+        if mod is None:
+            return (0, 0)
+        ver = getattr(mod, "bl_info", {}).get("version", (0, 0))
+        return (int(ver[0]), int(ver[1])) if len(ver) >= 2 else (0, 0)
+    except Exception:
+        return (0, 0)
+
+
+def _set_linear_node(node):
+    """Set Legacy gamma = 1.0 and, on OctaneBlender >= 31.7, Non-Color colorspace."""
+    legacy_gamma = node.inputs.get('Legacy gamma')
+    if legacy_gamma is not None:
+        legacy_gamma.default_value = 1.0
+    if _octane_version() >= (31, 7):
+        try:
+            node.inputs[1].ocio_color_space_name = _NON_COLOR_SPACE
+        except Exception:
+            pass
+
 # Cycles/EEVEE shader node → Octane equivalent.
 # bl_type   : node.type string used to identify the Cycles node
 # oct_type  : Octane bl_idname to create
@@ -473,9 +500,7 @@ def _convert_node(node_tree, old_node, uni_mat=None, wire_node=None, kw_map=None
 
     socket_name = _get_socket_name(image, kw_map)
     if greyscale or socket_name in _LINEAR_SOCKETS:
-        legacy_gamma = new_node.inputs.get('Legacy gamma')
-        if legacy_gamma is not None:
-            legacy_gamma.default_value = 1.0
+        _set_linear_node(new_node)
 
     node_tree.nodes.remove(old_node)
 
@@ -567,9 +592,7 @@ class OPSTYIX_OT_WireToUniversalMaterial(Operator):
                 continue
             node_tree.links.new(target, tex_out)
             if socket_name in _LINEAR_SOCKETS:
-                legacy_gamma = node.inputs.get('Legacy gamma')
-                if legacy_gamma is not None:
-                    legacy_gamma.default_value = 1.0
+                _set_linear_node(node)
             wired += 1
 
         parts = []
@@ -725,9 +748,7 @@ class OPSTYIX_OT_DuplicateAsAlpha(Operator):
             except Exception:
                 pass
 
-        legacy_gamma = new_node.inputs.get('Legacy gamma')
-        if legacy_gamma is not None:
-            legacy_gamma.default_value = 1.0
+        _set_linear_node(new_node)
 
         # Wire to Opacity socket if a Universal Material is present
         uni_mat, wire_node = _find_universal_material(node_tree)
